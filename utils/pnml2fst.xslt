@@ -79,13 +79,18 @@ transition </xsl:text>
     <xsl:text> := {
  from := marking;
  to := marking;
- guard := </xsl:text><xsl:apply-templates
+ guard := </xsl:text>
+    <xsl:if test="string-length($lastg)=0">
+      <xsl:text>true ;</xsl:text>
+    </xsl:if>
+    <xsl:apply-templates
       select="../arc|../pnml:arc"
       mode="guard">
       <xsl:with-param name="transit" select="$ident" />
       <xsl:with-param
         name="lastg" select="$lastg" />
     </xsl:apply-templates>
+    
   <xsl:text>
  action </xsl:text>
       <xsl:variable

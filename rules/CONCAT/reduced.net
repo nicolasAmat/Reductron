@@ -1,0 +1,10 @@
+net CONCAT
+
+tr a  -> x
+tr b  x ->
+tr c  x ->
+
+# generated equations
+# A |- x = p + q
+
+

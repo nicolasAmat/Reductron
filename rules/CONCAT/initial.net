@@ -1,0 +1,8 @@
+net CONCAT
+tr a  -> p
+tr b  p ->
+tr tau1  p -> q
+tr c  q ->
+
+# Constraint: q = 0
+
