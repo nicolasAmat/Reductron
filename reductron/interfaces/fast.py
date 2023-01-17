@@ -30,16 +30,16 @@ import tempfile
 import sys
 import os
 
-from reductron.ptio.ptnet import PetriNet, Transition
+from reductron.ptio.ptnet import PetriNet, Transition, Sequence
 from reductron.ptio.presburger import Presburger
 
 
-def tau_star(net: PetriNet, region: Presburger) -> list[list[Transition]]:
+def tau_star(ptnet: PetriNet, region: Presburger) -> list[list[Transition]]:
     """ Compute tau star
 
     Parameters
     ----------
-    net : str
+    ptnet : str
         Net.
     region : str
         Region.
@@ -49,14 +49,14 @@ def tau_star(net: PetriNet, region: Presburger) -> list[list[Transition]]:
     list of list of Transition
         List of sequences.
     """
-    if not net.silent_transitions:
+    if not ptnet.silent_transitions:
         return []
 
     pnml_fp = tempfile.NamedTemporaryFile(suffix='.pnml')
 
     ndrio = Popen(["ndrio", '-NET', '-', '-pnml', pnml_fp.name], stdin=PIPE)
 
-    ndrio.stdin.write(bytes(net.silent_restriction(), 'utf-8'))
+    ndrio.stdin.write(bytes(ptnet.silent_restriction(), 'utf-8'))
     ndrio.stdin.flush()
     ndrio.stdin.close()
 
@@ -92,11 +92,10 @@ def tau_star(net: PetriNet, region: Presburger) -> list[list[Transition]]:
 
     fast_fp.close()
 
-    transitions = []
-
+    sequences, counter = [], 0
     for line in fast.stderr.decode('utf-8').splitlines():
         if 'OK !' in line:
-            transitions.append([net.transitions[line.split(' ')[2]]])
-
-    return transitions
-
+            sequences.append(Sequence(ptnet, "tau{}".format(counter), [ptnet.transitions[line.split(' ')[2]]]))
+            counter += 1
+    
+    return sequences

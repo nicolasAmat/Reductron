@@ -18,7 +18,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with Reductron. If not, see <https://www.gnu.org/licenses/>.
 """
-
+from __future__ import annotations
 __author__ = "Nicolas AMAT, LAAS-CNRS"
 __contact__ = "namat@laas.fr"
 __license__ = "GPLv3"
@@ -29,95 +29,82 @@ import logging as log
 import time
 from typing import Optional
 
-from reductron.ptio.ptnet import PetriNet, Transition
+from reductron.ptio.ptnet import PetriNet, Sequence
 from reductron.ptio.presburger import Presburger
 from reductron.interfaces.z3 import Z3
 from reductron.interfaces.fast import tau_star
+from reductron.ptio.polyhedron import Polyhedron
 
 
-def smt_and(l):
-    smt_input = ' '.join(l)
-    if len(l) > 1:
+def smt_and(constraints: list[str]):
+    if not constraints:
+        return "true"
+
+    smt_input = ' '.join(constraints)
+
+    if len(constraints) > 1:
         smt_input = '(and {})'.format(smt_input)
+
     return smt_input
 
 
-def smt_or(l):
-    smt_input = ' '.join(l)
-    if len(l) > 1:
+def smt_or(constraints: list[str]):
+    if not constraints:
+        return "false"
+
+    smt_input = ' '.join(constraints)
+
+    if len(constraints) > 1:
         smt_input = '(or {})'.format(smt_input)
+
     return smt_input
 
 
-def smt_non_negative(l, k=None):
-    smt_input = ''
-    if l:
-        smt_input = smt_and(['(>= {} 0)'.format(elem.smtlib(k)) for elem in l])
-    return smt_input
+def smt_forall(declaration: str, constraint: str):
+    return "(forall ({}) {})".format(declaration, constraint)
 
 
-def smt_list(l, k=None):
-    if l:
-        return '(' + ' '.join(map(lambda elem: "({} Int)".format(elem.smtlib(k)), l)) + ')'
-    return '()'
-
-
-def smt_forall(l, constraint):
-    return "(forall {} {})".format(smt_list(l), constraint)
-
-
-def smt_exists(l, constraint):
-    return "(exists {} {})".format(smt_list(l), constraint)
+def smt_exists(declaration: str, constraint: str):
+    return "(exists ({}) {})".format(declaration, constraint)
 
 
 def smt_imply(left, right):
     return "(=> {} {})".format(left, right)
 
 
-def smt_assert(constraint):
-    return "(assert {})".format(constraint)
+def smt_equiv(left, right):
+    return smt_and([smt_imply(left, right), smt_imply(right, left)])
 
 
-def smt_silent_reachability_set(n: PetriNet, c: Presburger, e: Presburger, k: Optional[int] = None) -> str:
-    # TODO: Use k
-    return smt_exists(set(n.places.values()) | set(e.additional_vars.values()), smt_and([e.smtlib(), c.smtlib()]))
 
-def smt_saturated_sequence():
-    pass
-
-
-def check_silent_reachability_set(solver: Z3, n1: PetriNet, c1: Presburger, n2: PetriNet, c2: Presburger, e: Presburger, tau_star: list[list[Transition]]) -> bool:
+def check_silent_reachability_set(solver: Z3, n1: PetriNet, c1: Presburger, n2: PetriNet, c2: Presburger, e: Polyhedron, tau_star: list[Sequence]) -> bool:
+    """ Check.
+    """
     smt_input = ""
 
     k_max = len(tau_star)
 
-    left_equiv = smt_silent_reachability_set(n2, c2, e, k_max)
-
-    variables = ["k_{}".format(i) for i in range(k_max)] + [pl.smtlib(k) for pl in n1.places.values() for k in range(k_max)]
-    saturated_sequences = [smt_saturated_sequence(sequence, k) for k, sequence in enumerate(tau_star)]
-    right_equiv = "(exists ({}) {})".format(' '.join(variables), smt_and([c1.smtlib(0)] + saturated_sequences))
-
-
-    solver.reset()
-    solver.write(smt_input)
-
-    return solver.check_sat()
-
-
-def core_1(solver: Z3, n1: PetriNet, c1: Presburger, n2: PetriNet, c2: Presburger, e: Presburger) -> bool:
-    left_imply = smt_and([smt_non_negative(n1.places.values()), c1.smtlib()])
+    left_equiv = smt_exists(e.smtlib_declare(k1=k_max, common=k_max, exclude_initial=True), 
+                            smt_and([e.smtlib(k1=k_max, common=k_max), c2.smtlib()]))
     
-    variables = set(n2.places.values()) | set(e.additional_vars.values())
-    right_imply = smt_exists(variables, smt_and([smt_non_negative(variables), e.smtlib(), c2.smtlib()]))
+    right_equiv = smt_exists(''.join([c1.smtlib_declare(k=k) for k in range(k_max)]), 
+                              smt_and([c1.smtlib(0)] + [sequence.smtlib(k) for k, sequence in enumerate(tau_star)]))
     
-    smt_input = smt_assert(smt_forall(n1.places.values(), smt_imply(left_imply, right_imply)))
-    
-    solver.reset()
-    solver.write(smt_input)
-    
-    return solver.check_sat()
+    smt_input = smt_forall(c1.smtlib_declare(k_max), smt_equiv(left_equiv, right_equiv))
 
+    return solver.check_sat(smt_input)
 
+def core_1(solver: Z3, n1: PetriNet, c1: Presburger, n2: PetriNet, c2: Presburger, e: Polyhedron) -> bool:
+    """ Check (CORE 1)
+
+        \forall p1. (C1(p1) \implies \exists p2 x. E(p1, p2, x) /\ C2(P2))
+    """
+    left_implies = c1.smtlib()
+    right_implies = smt_exists(e.smtlib_declare(exclude_initial=True), smt_and([e.smtlib(), c2.smtlib()]))
+
+    smt_input = smt_forall(n1.smtlib_declare_places(), smt_imply(left_implies, right_implies))
+
+    return solver.check_sat(smt_input)
 
 
 def main():
@@ -127,8 +114,7 @@ def main():
     start_time = time.time()
 
     # Arguments parser
-    parser = argparse.ArgumentParser(
-        description='Reductron: Automated Polyhedral Abstraction Prover')
+    parser = argparse.ArgumentParser(description='Reductron - Automated Polyhedral Abstraction Prover')
 
     parser.add_argument('--version',
                         action='version',
@@ -179,23 +165,20 @@ def main():
     log.info(n2)
 
     # Parse constraints C1 and C2
-    c1 = Presburger(n1.places.keys(), "C1")
-    c1.parse_coherency_constraint(results.initial_net)
+    c1 = Presburger(results.initial_net, n1.places.keys(), "C1")
     log.info("C1:")
     log.info("---")
     log.info(c1)
     log.info("")
 
-    c2 = Presburger(n2.places.keys(), "C2")
-    c2.parse_coherency_constraint(results.reduced_net)
+    c2 = Presburger(results.reduced_net, n2.places.keys(), "C2")
     log.info("C2:")
     log.info("---")
     log.info(c2)
     log.info("")
 
     # Parse system of reductions E
-    e = Presburger(n1.places.keys() | n2.places.keys(), "E")
-    e.parse_reduction_system(results.reduced_net)
+    e = Polyhedron(results.reduced_net, n1.places.keys(), n2.places.keys())
     log.info("E:")
     log.info("--")
     log.info(e)
@@ -203,10 +186,21 @@ def main():
 
     # Compute tau*
     tau1_star = tau_star(n1, c1)
+    log.info("tau1*:")
+    log.info("------")
+    log.info(''.join(map(str, tau1_star)))
+    log.info("")
+
     tau2_star = tau_star(n2, c2)
+    log.info("tau2*:")
+    log.info("------")
+    log.info(''.join(map(str, tau2_star)))
+    log.info("")
 
     # Instantiate a SMT-solver
     solver = Z3(results.debug)
+
+    check_silent_reachability_set(solver, n1, c1, n2, c2, e, tau1_star) 
 
     print("> Check that (N2, C2) is a strong E-abstraction of (N1, C1):")
     verdict = core_1(solver, n1, c1, n2, c2, e)
@@ -218,18 +212,7 @@ def main():
     verdict = core_1(solver, n2, c2, n1, c1, e)
     print("(CORE 1):", verdict)    
 
-
-    # Change nets in presbuger to free-variables
-
-    # Check transitions
-
-    # ndrio net -> pnml
-    # xsltproc pnml -> fast + region
-
-    # Call fast
-    # Check E /\ C1 equiv fast
         
-    
 
 if __name__ == '__main__':
     main()

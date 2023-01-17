@@ -242,6 +242,8 @@ class PetriNet:
         for arc in outputs:
             tr.connected_places.append(self.parse_arc(arc, tr.post))
 
+        tr.normalize()
+
     def parse_arc(self, content: str, arcs: dict[Place, int]) -> Place:
         """ Arc parser.
 
@@ -402,7 +404,7 @@ class Place:
         str
             SMT-LIB format.
         """
-        return "(declare-const {} Int)\n(assert (>= {} 0))\n".format(self.smtlib(k), self.smtlib(k))
+        return "({} Int)".format(self.smtlib(k))
 
 
 class Transition:
@@ -485,6 +487,12 @@ class Transition:
 
         return text
 
+    def normalize(self):
+        for place in set(self.pre.keys()) | set(self.post.keys()):
+            delta = self.post.get(place, 0) - self.pre.get(place, 0)
+            if delta != 0:
+                self.delta[place] = delta
+
     def smtlib(self, k: int) -> str:
         """ Transition relation from places at order k to order k + 1.
             
@@ -505,15 +513,9 @@ class Transition:
             smt_input += "(>= {}@{} {})".format(pl.id, k, weight)
         smt_input += "\n\t\t"
 
-        # Update input places
-        for pl, weight in self.inputs.items():
-            if pl in self.outputs:
-                smt_input += "(= {}@{} (- (+ {}@{} {}) {}))".format(pl.id, k + 1, pl.id, k, self.outputs[pl], weight)
-
-        # Update output places
-        for pl, weight in self.outputs.items():
-            if pl not in self.inputs or self.inputs[pl] < 0:
-                smt_input += "(= {}@{} (+ {}@{} {}))".format(pl.id, k + 1, pl.id, k, weight)
+        # Update places
+        for pl, weight in self.delta.items():
+            smt_input += "(= {}@{} ({} {}@{} {}))".format('-' if weight < 0 else '+', pl.id, k + 1, pl.id, k, abs(weight))
         smt_input += "\n\t\t"
 
         # Unconnected places must not be changed
@@ -533,5 +535,67 @@ class Transition:
         str
             SMT-LIB format.
         """
-        return "(declare-const {} Int)\n(assert (>= {} 0))\n".format(self.id, self.id)
+        return "({} Int)".format(self.id)
+
+
+class Sequence:
+    """
+    """
+
+    def __init__(self, ptnet: PetriNet, id: str, sequence: list[Transition]):
+        """ Initializer.
+        """
+        self.ptnet: PetriNet = ptnet
+
+        # Saturation variables
+        self.saturation_variable:str = id
+
+        # Sequence of transitions
+        self.sequence = sequence
+
+        self.hurdle = {}
+        self.delta = {}
+
+        self.compute_vectors()
+
+    def __str__(self):
+        """ Sequence to textual format.
+        """
+        if not self.sequence:
+            return "epsilon"
+        else:
+            return "({})*".format(' '.join(map(lambda tr: tr.id, self.sequence)))
+
+    def smtlib_declare(self) -> str:
+        return "({} Int)".format(self.saturation_variable)
+
+    def smtlib(self, k: int = 0):
+        """ States to SMT-LIB format.
+        """
+        if not self.sequence:
+            return "(true)"
+
+        smt_input = "(>= {} 0)".format(self.saturation_variable)
+
+        smt_input += ' '.join(["(>= {} {})".format(pl.smtlib(k), str(hurdle) if self.delta.get(pl) >= 0 else "(+ {} (* {} {}))").format(hurdle, self.saturation_variable, abs(self.delta.get(pl, 0))) for pl, hurdle in self.hurdle.items()])
+
+        smt_input += ' '.join(["(= {} ({} {} (* {} {})))".format(pl.smtlib(k + 1), '-' if delta < 0 else '+', pl.smtlib(k), self.saturation_variable, abs(delta)) for pl, delta in self.delta.items()])
+        
+        for pl in self.ptnet.places.values():
+            if pl not in set.union(*[set(tr.connected_places) for tr in self.sequence]):
+                smt_input += "(= {} {})".format(pl.smtlib(k + 1), pl.smtlib(k))
+
+        smt_input = "(and {})".format(smt_input)
+
+        return "(exists ({}) {})".format(self.smtlib_declare(), smt_input)
+
+    def compute_vectors(self):
+        for tr in reversed(self.sequence):
+            for pl in set(tr.connected_places):
+                # H(t.\sigma) = max(H(t), H(\sigma) - \Delta(t))
+                self.hurdle[pl] = max(tr.pre.get(pl, 0), self.hurdle.get(pl, 0) - tr.delta.get(pl, 0))
+                 # \Delta(t.\sigma) = \Delta(t) + \Delta(\sigma)
+                self.delta[pl] = self.delta.get(pl, 0) + tr.delta.get(pl, 0)    
+
+   
 

@@ -104,13 +104,49 @@ class Presburger:
         self.places: set[str] = places
         self.identifier: str = identifier
 
-        self.additional_vars: dict[str,Variable] = {}
+        self.additional_vars: dict[str, Variable] = {}
+
         self.F: Optional[Expression] = None
 
         self.parse_coherency_constraint(filename)
 
+    def __str__(self) -> str:
+        """ Formula to textual format.
+
+        Returns
+        -------
+        str
+            Debugging format.
+        """
+        return str(self.F)
+
+    def smtlib(self, k: Optional[int] = None) -> str:
+        """ Assert the Formula.
+
+        Note
+        ----
+        Debugging method.
+
+        Returns
+        -------
+        str
+            SMT-LIB format.
+        """
+        return "(and {} {})".format(' '.join(map(lambda pl: '(>= {} 0)'.format(pl) if k is None else '(>= {}@{} 0)'.format(pl, k), self.places)), self.F.smtlib(k))
+
+    def smtlib_declare(self, k: Optional[int] = None):
+        return ''.join(["({} Int)".format(var) if k is None else "({}@{} Int)".format(var, k) for var in set(self.places) | set(self.additional_vars.keys())])
+
+    def fast(self) -> str:
+        return self.F.fast()
+
     def parse_coherency_constraint(self, filename: str) -> None:
-        """ 
+        """ Parse coherency constraint.
+
+        Parameters
+        ----------
+        filename: : str
+            Path to the net file.
         """
         try:
             with open(filename, 'r') as fp:
@@ -123,24 +159,6 @@ class Presburger:
             fp.close()
         except FileNotFoundError as e:
             sys.exit(e)
-
-    # def parse_reduction_system(self, filename: str) -> None:
-    #     """
-    #     """        
-    #     try:
-    #         with open(filename, 'r') as fp:
-    #             formula = 'T'
-    #             content = re.search(r'generated equations\n(.*)?\n\n', fp.read().replace('#', '.').replace(',', '.'), re.DOTALL)  # '#' and ',' forbidden in SMT-LIB
-    #             if content:
-    #                 equations = []
-    #                 for line in re.split('\n+', content.group())[1:-1]:
-    #                     if line.partition(' |- ')[0] not in ['. O', '. C']:
-    #                         equations.append(line.partition(' |- ')[2])
-    #                 formula = '/\\'.join(equations)
-    #             self.parse_formula(formula)
-    #         fp.close()
-    #     except FileNotFoundError as e:
-    #         sys.exit(e)
 
     def parse_formula(self, formula: str) -> None:
         """  parser.
@@ -305,33 +323,6 @@ class Presburger:
             operands, operator = None, None
             self.F = stack_operands.pop()[0]
 
-    def __str__(self) -> str:
-        """ Formula to textual format.
-
-        Returns
-        -------
-        str
-            Debugging format.
-        """
-        return str(self.F)
-
-    def smtlib(self) -> str:
-        """ Assert the Formula.
-
-        Note
-        ----
-        Debugging method.
-
-        Returns
-        -------
-        str
-            SMT-LIB format.
-        """
-        return self.F.smtlib()
-
-    def fast(self) -> str:
-        return self.F.fast()
-
 
 class SimpleExpression(ABC):
     """ Simple Expression.
@@ -379,26 +370,7 @@ class Expression(SimpleExpression):
     ----
     Can be evaluated to 'TRUE' or 'FALSE'.
     """
-
-    @abstractmethod
-    def smtlib(self, k: int = None, assertion: bool = False, negation: bool = False) -> str:
-        """ Assert the Expression.
-
-        Parameters
-        ----------
-        k : int, optional
-            Order.
-        assertion : bool
-            Assertion flag.
-        negation : bool
-            Negation flag.
-
-        Returns
-        -------
-        str
-            SMT-LIB format.
-        """
-        pass
+    pass
 
 
 class StateFormula(Expression):
@@ -446,17 +418,11 @@ class StateFormula(Expression):
 
         return text
 
-    def smtlib(self, k: int = None, assertion: bool = False, negation: bool = False) -> str:
+    def smtlib(self, k: int = None) -> str:
         smt_input = ' '.join(map(lambda operand: operand.smtlib(k), self.operands))
 
         if len(self.operands) > 1 or self.operator == 'not':
             smt_input = "({} {})".format(self.operator, smt_input)
-
-        if negation:
-            smt_input = "(not {})".format(smt_input)
-
-        if assertion:
-            smt_input = "(assert {})\n".format(smt_input)
 
         return smt_input
 
@@ -513,16 +479,8 @@ class Atom(Expression):
     def __str__(self) -> str:
         return "({} {} {})".format(self.left_operand, self.operator, self.right_operand)
 
-    def smtlib(self, k: int = None, assertion: bool = False, negation: bool = False) -> str:
-        smt_input = "({} {} {})".format(self.operator, self.left_operand.smtlib(k), self.right_operand.smtlib(k))
-
-        if negation:
-            smt_input = "(not {})".format(smt_input)
-
-        if assertion:
-            smt_input = "(assert {})\n".format(smt_input)
-
-        return smt_input
+    def smtlib(self, k: int = None) -> str:
+        return "({} {} {})".format(self.operator, self.left_operand.smtlib(k), self.right_operand.smtlib(k))
 
     def fast(self) -> str:
         return "({} {} {})".format(self.left_operand.fast(), self.operator, self.right_operand.fast())
@@ -550,16 +508,8 @@ class BooleanConstant(Expression):
     def __str__(self) -> str:
         return str(self.value)
 
-    def smtlib(self, k: int = None, assertion: bool = False, negation: bool = False) -> str:
-        smt_input = str(self).lower()
-
-        if negation:
-            smt_input = "(not {})".format(smt_input)
-
-        if assertion:
-            smt_input = "(assert {})\n".format(smt_input)
-
-        return smt_input
+    def smtlib(self, k: int = None) -> str:
+        return str(self).lower()
 
     def fast(self) -> str:
         return str(self).lower()
@@ -726,7 +676,4 @@ class Variable(SimpleExpression):
         str
             SMT-LIB format.
         """
-        if k is None:
-            return "(declare-const {} Int)\n(assert (>= {} 0))\n".format(self.id, self.id)
-        else:
-            return "(declare-const {}@{} Int)\n(assert (>= {}@{} 0))\n".format(self.id, k, self.id, k)
+        return "({} Int)".format(self.id) if k is None else "({}@{} Int)".format(self.id, k)

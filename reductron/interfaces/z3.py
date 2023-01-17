@@ -149,37 +149,21 @@ class Z3:
         """
         self.write("(reset)\n")
 
-    def push(self):
-        """ Push.
-
-        Note
-        ----
-        Creates a new scope by saving the current stack size.
-        """
-        self.write("(push)\n")
-
-    def pop(self) -> None:
-        """ Pop.
-
-        Note
-        ----
-        Removes any assertion or declaration performed between it and the last push.
-        """
-        self.write("(pop)\n")
-
-    def check_sat(self, no_check: bool = False) -> Optional[bool]:
+    def check_sat(self, input: str) -> Optional[bool]:
         """ Check the satisfiability of the current stack of z3.
 
         Parameters
         ----------
-        no_check : bool
-            Do not abort the solver in case of unknown verdict.
+        input : str 
+            Input query.
 
         Returns
         -------
         bool, optional
             Satisfiability of the current stack.
         """
+        self.reset()
+        self.write("(assert {})\n".format(input))
         self.write("(check-sat)\n")
         self.flush()
 
@@ -189,7 +173,7 @@ class Z3:
             return True
         elif sat == 'unsat':
             return False
-        elif not no_check:
+        else:
             self.abort()
 
         return None
