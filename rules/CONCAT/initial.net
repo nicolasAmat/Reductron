@@ -1,8 +1,8 @@
 net CONCAT
-tr a  -> p
-tr b  p ->
-tr tau1  p -> q
-tr c  q ->
+tr a : 1  -> p
+tr b : 2  p ->
+tr tau1 : tau  p -> q
+tr c : 3  q ->
 
 # Constraint: q = 0
 

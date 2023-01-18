@@ -36,7 +36,7 @@ from reductron.interfaces.fast import tau_star
 from reductron.ptio.polyhedron import Polyhedron
 
 
-def smt_and(constraints: list[str]):
+def smt_and(constraints: list[str]) -> str:
     if not constraints:
         return "true"
 
@@ -48,7 +48,7 @@ def smt_and(constraints: list[str]):
     return smt_input
 
 
-def smt_or(constraints: list[str]):
+def smt_or(constraints: list[str]) -> str:
     if not constraints:
         return "false"
 
@@ -59,30 +59,55 @@ def smt_or(constraints: list[str]):
 
     return smt_input
 
-def smt_forall(declaration: list[str], constraint: str):
+def smt_forall(declaration: list[str], constraint: str) -> str:
     smt_declaration = ' '.join(map(lambda var: "({} Int)".format(var), declaration))
     smt_non_negative = smt_and(['(>= {} 0)'.format(var) for var in declaration])
     return "(forall ({}) {})".format(smt_declaration, smt_imply(smt_non_negative, constraint))
 
 
-def smt_exists(declaration: list[str], constraint: str):
+def smt_exists(declaration: list[str], constraint: str) -> str:
     smt_declaration = ' '.join(map(lambda var: "({} Int)".format(var), declaration))
     smt_non_negative = smt_and(['(>= {} 0)'.format(var) for var in declaration])
     return "(exists ({}) {})".format(smt_declaration, smt_and([smt_non_negative, constraint]))
 
 
-def smt_imply(left, right):
+def smt_imply(left: str, right: str) -> str:
     return "(=> {} {})".format(left, right)
 
 
-def smt_equiv(left, right):
+def smt_equiv(left: str, right: str) -> str:
     return smt_and([smt_imply(left, right), smt_imply(right, left)])
+
+
+def smt_tau_star(e: Polyhedron, k, k_prime, on_reduced: bool = False) -> str:
+    """ 
+        exists p2. (E(p1, p2) /\ E(p1', p2))
+    """
+    if not on_reduced:
+        k1, k2, kx, common = k, None, None, k
+        k1_prime, k2_prime, kx_prime, common_prime = k_prime, None, None, k_prime
+    else:
+        k1, k2, kx, common = None, k, None, k
+        k1_prime, k2_prime, kx_prime, common_prime = None, k_prime, None, k_prime
+
+    return smt_exists(e.smtlib_declare(exclude_initial=not on_reduced, exclude_reduced=on_reduced), smt_and([e.smtlib(k1=k1, k2=k2, kx=kx, common=common), e.smtlib(k1=k1_prime, k2=k2_prime, kx=kx_prime, common=common_prime)]))
+
+
+def smt_hat_t_from_coherent(n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet, c2: Presburger, k: int, k_prime: int, l: Optional[str] = None, on_reduced: bool = False) -> str:
+    """
+        exists p1''. tau*(p1, p1'') /\ T(p'', p')
+    """
+    k_intermediate = k
+    while k_intermediate == k or k_intermediate == k_prime:
+        k_intermediate += 1
+    
+    return smt_exists(c1.smtlib_declare(k_intermediate), smt_and([smt_tau_star(e, k, k_intermediate, on_reduced=on_reduced), n1.smtlib_transition_relation(k_intermediate, k_prime, l=l)]))
 
 
 def check_silent_reachability_set(solver: Z3, n1: PetriNet, c1: Presburger, n2: PetriNet, c2: Presburger, e: Polyhedron, tau_star: list[Sequence], on_reduced: bool = False) -> bool:
     """ Check the silent reachability set of N1 (resp N2) from Fast is conform to E /\ C2 (resp E /\ C1).
 
-        forall p1^k. ((exists p2. E(p1, p2) /\ C(2)) <=> (exists p1^0 ... p^k-1. C1(p1^0) /\ tau_star[0](p1^0, p1^1) /\ ... /\ tau_star[k-1](p1^k-1, p1^k))
+        forall p1^k. ((exists p2. E(p1, p2) /\ C2(p2)) <=> (exists p1^0 ... p^k-1. C1(p1^0) /\ tau_star[0](p1^0, p1^1) /\ ... /\ tau_star[k-1](p1^k-1, p1^k))
     """
     k_max = len(tau_star)
 
@@ -132,19 +157,19 @@ def core_1(solver: Z3, n1: PetriNet, c1: Presburger, n2: PetriNet, c2: Presburge
     return solver.check_sat(smt_input)
 
 
-# def core_2(solver: Z3, n1: PetriNet, c1: Presburger) -> bool:
-#     """ Check (CORE 2)
+def core_2(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet, c2: Presburger, on_reduced: bool = False) -> bool:
+    """ Check (CORE 2)
 
-#         forall p1 p1' l. (C1(p1) /\ T^(C_1)(p1, p1', l) => exists p1'' T^(C1)(p1, p1'', l) /\ C1(p1'') /\ tau*(p1'', p1'))
-#     """
-    
-#     left_implies = c1.smtlib()
-#     right_implies = smt_exists(e.smtlib_declare(exclude_initial=exclude_initial, exclude_reduced=exclude_reduced), smt_and([e.smtlib(), c2.smtlib()]))
+        forall p1 p1' l. (C1(p1) /\ T^(C_1)(p1, p1', l) => exists p1'' T^(C1)(p1, p1'', l) /\ C1(p1'') /\ tau*(p1'', p1'))
+    """
+    l, k, k_prime, k_hiatus = "l", 0, 1, 2
 
-#     smt_input = smt_forall(c1.smtlib_declare(), smt_imply(left_implies, right_implies))
+    left_imply = smt_and([c1.smtlib(k), smt_hat_t_from_coherent(n1, c1, e, n2, c2, k, k_prime, l, on_reduced=on_reduced)])
+    right_imply = smt_exists(c1.smtlib_declare(k_hiatus), smt_and([smt_hat_t_from_coherent(n1, c1, e, n2, c2, k, k_hiatus, l, on_reduced=on_reduced), c1.smtlib(k_hiatus), smt_tau_star(e, k_hiatus, k_prime, on_reduced=on_reduced)]))
 
-#     return solver.check_sat(smt_input)
+    smt_input = smt_forall(c1.smtlib_declare(k) + c1.smtlib_declare(k_prime) + [l], smt_imply(left_imply, right_imply))
 
+    return solver.check_sat(smt_input)
 
 
 def main():
@@ -253,14 +278,14 @@ def main():
     print("> Check that (N2, C2) is a strong E-abstraction of (N1, C1):")
     verdict = core_1(solver, n1, c1, n2, c2, e)
     print("(CORE 1):", core_1(solver, n1, c1, n2, c2, e))
-    # print("(CORE 2):", core_2(solver, n1, c1))
+    print("(CORE 2):", core_2(solver, n1, c1, e, n2, c2))
 
     print()
 
     print("> Check that (N1, C1) is a strong E-abstraction of (N2, C2):")
     verdict = core_1(solver, n2, c2, n1, c1, e, on_reduced=True)
     print("(CORE 1):", core_1(solver, n2, c2, n1, c1, e, on_reduced=True))
-    # print("(CORE 2):", core_2(solver, n2, c2))
+    print("(CORE 2):", core_2(solver, n2, c2, e, n1, c1, on_reduced=True))
 
 
 
