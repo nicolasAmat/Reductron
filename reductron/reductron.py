@@ -197,13 +197,13 @@ def core_3(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet
 def core_4(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet, c2: Presburger, on_reduced: bool = False) -> bool:
     """ Check (CORE 4)
 
-        forall p1 p2 x. C1(p1) /\ C2(p2) /\ E(p1, p2, x) => forall p1' x'. tau*(p1, p1') /\ E(p1', p2)
+        forall p1 p2 x. C1(p1) /\ C2(p2) /\ E(p1, p2, x) => forall p1' x'. tau*(p1, p1') => E(p1', p2)
 
         F := forall p1 p2 x. F1
         F1 := F2 => F3
         F2 := C1(p1) /\ C2(p2) /\ E(p1, p2, x)
         F3 := forall p1' x'. F4
-        F4 := tau*(p1, p1') /\ E(p1', p2, x')
+        F4 := tau*(p1, p1') => E(p1', p2, x')
     """
     k, k_prime = 0, 1
 
