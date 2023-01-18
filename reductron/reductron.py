@@ -194,6 +194,37 @@ def core_3(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet
     return solver.check_sat(smt_input)
 
 
+def core_4(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet, c2: Presburger, on_reduced: bool = False) -> bool:
+    """ Check (CORE 4)
+
+        forall p1 p2 x. C1(p1) /\ C2(p2) /\ E(p1, p2, x) => forall p1' x'. tau*(p1, p1') /\ E(p1', p2)
+
+        F := forall p1 p2 x. F1
+        F1 := F2 => F3
+        F2 := C1(p1) /\ C2(p2) /\ E(p1, p2, x)
+        F3 := forall p1' x'. F4
+        F4 := tau*(p1, p1') /\ E(p1', p2, x')
+    """
+    k, k_prime = 0, 1
+
+    if not on_reduced:
+        k1_prime, k2_prime, kx_prime, common_prime = k_prime, k, k_prime, k_prime
+    else:
+        k1_prime, k2_prime, kx_prime, common_prime = k, k_prime, k_prime, k_prime
+    
+    f4 = smt_and([smt_tau_star(e, k, k_prime, on_reduced=on_reduced), e.smtlib(k1=k1_prime, k2=k2_prime, kx=kx_prime, common=common_prime)])
+    
+    f3 = smt_forall(e.smtlib_declare(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime, exclude_initial=on_reduced, exclude_reduced=not on_reduced), f4)
+    
+    f2 = smt_and([c1.smtlib(k), c2.smtlib(k), e.smtlib(k1=k, k2=k, kx=k, common=k)])
+    
+    f1 = smt_imply(f2, f3)
+
+    smt_input = smt_forall(e.smtlib_declare(k1=k, k2=k, kx=k, common=k), f1)
+
+    return solver.check_sat(smt_input)
+
+
 
 def main():
     """ Main function.
@@ -303,6 +334,7 @@ def main():
     print("(CORE 1):", core_1(solver, n1, c1, n2, c2, e))
     print("(CORE 2):", core_2(solver, n1, c1, e, n2, c2))
     print("(CORE 3):", core_3(solver, n1, c1, e, n2, c2))
+    print("(CORE 4):", core_4(solver, n2, c2, e, n1, c1))
 
     print()
 
@@ -311,6 +343,7 @@ def main():
     print("(CORE 1):", core_1(solver, n2, c2, n1, c1, e, on_reduced=True))
     print("(CORE 2):", core_2(solver, n2, c2, e, n1, c1, on_reduced=True))
     print("(CORE 3):", core_3(solver, n2, c2, e, n1, c1, on_reduced=True))
+    print("(CORE 4):", core_4(solver, n2, c2, e, n1, c1, on_reduced=True))
 
 
 
