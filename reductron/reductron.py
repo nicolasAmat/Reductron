@@ -212,7 +212,7 @@ def core_4(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet
     else:
         k1_prime, k2_prime, kx_prime, common_prime = k, k_prime, k_prime, k_prime
     
-    f4 = smt_and([smt_tau_star(e, k, k_prime, on_reduced=on_reduced), e.smtlib(k1=k1_prime, k2=k2_prime, kx=kx_prime, common=common_prime)])
+    f4 = smt_imply(smt_tau_star(e, k, k_prime, on_reduced=on_reduced), e.smtlib(k1=k1_prime, k2=k2_prime, kx=kx_prime, common=common_prime))
     
     f3 = smt_forall(e.smtlib_declare(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime, exclude_initial=on_reduced, exclude_reduced=not on_reduced), f4)
     
