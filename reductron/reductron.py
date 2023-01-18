@@ -172,6 +172,29 @@ def core_2(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet
     return solver.check_sat(smt_input)
 
 
+def core_3(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet, c2: Presburger, on_reduced: bool = False) -> bool:
+    """ Check (CORE 3)
+
+        forall p1 p2 x. C1(p1) /\ C2(p2) /\ E(p1, p2, x) => forall p1' p2' x' l. T(C1)(p1, p1', l) /\ E(p1', p2', x') => T(C2)(p2, p2', l)
+
+        F := forall p1 p2 x. (F1 => F2)
+        F1 := C1(p1) /\ C2(p2) /\ E(p1, p2, x)
+        F2 = forall p1' p2' x' l. F3 => F4 
+        F3 := T(C1)(p1, p1', l) /\ E(p1', p2', x')
+        F4 := T(C2)(p2, p2', l)
+    """
+    l, k, k_prime = "l", 0, 1
+    
+    f4 = smt_hat_t_from_coherent(n2, c2, e, n1, c1, k, k_prime, l, on_reduced=not on_reduced)
+    f3 = smt_and([smt_hat_t_from_coherent(n1, c1, e, n2, c2, k, k_prime, l, on_reduced=on_reduced), e.smtlib(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime)])
+    f2 = smt_forall(e.smtlib_declare(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime) + [l], smt_imply(f3, f4))
+    f1 = smt_and([c1.smtlib(k), c2.smtlib(k), e.smtlib(k1=k, k2=k, kx=k, common=k)])
+    smt_input = smt_forall(e.smtlib_declare(k1=k, k2=k, kx=k, common=k), smt_imply(f1, f2))
+
+    return solver.check_sat(smt_input)
+
+
+
 def main():
     """ Main function.
     """
@@ -279,6 +302,7 @@ def main():
     verdict = core_1(solver, n1, c1, n2, c2, e)
     print("(CORE 1):", core_1(solver, n1, c1, n2, c2, e))
     print("(CORE 2):", core_2(solver, n1, c1, e, n2, c2))
+    print("(CORE 3):", core_3(solver, n1, c1, e, n2, c2))
 
     print()
 
@@ -286,6 +310,7 @@ def main():
     verdict = core_1(solver, n2, c2, n1, c1, e, on_reduced=True)
     print("(CORE 1):", core_1(solver, n2, c2, n1, c1, e, on_reduced=True))
     print("(CORE 2):", core_2(solver, n2, c2, e, n1, c1, on_reduced=True))
+    print("(CORE 3):", core_3(solver, n2, c2, e, n1, c1, on_reduced=True))
 
 
 

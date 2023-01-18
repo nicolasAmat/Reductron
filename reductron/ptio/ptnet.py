@@ -154,7 +154,7 @@ class PetriNet:
             return "true"
 
 
-        smt_input += ''.join(map(lambda tr: tr.smtlib(k, k_prime, l),self.transitions.values()))
+        smt_input += ''.join(map(lambda tr: tr.smtlib(k, k_prime, l),self.labeled_transitions))
 
         if eq:
             smt_input += "\t(and\n\t\t"
@@ -162,7 +162,7 @@ class PetriNet:
                 smt_input += "(= {} 0)\n\t\t".format(l)
             smt_input += ''.join(map(lambda pl: "(= {}@{} {}@{})".format(pl.id, k_prime, pl.id, k), self.places.values()))
             smt_input += "\n\t)"
-        smt_input += "\n"
+        smt_input = "\n(or\n{}\n)\n".format(smt_input)
 
         return smt_input
 
