@@ -132,10 +132,13 @@ class Presburger:
         str
             SMT-LIB format.
         """
-        return "(and {} {})".format(' '.join(map(lambda pl: '(>= {} 0)'.format(pl) if k is None else '(>= {}@{} 0)'.format(pl, k), self.places)), self.F.smtlib(k))
+        return self.F.smtlib(k)
 
-    def smtlib_declare(self, k: Optional[int] = None):
-        return ''.join(["({} Int)".format(var) if k is None else "({}@{} Int)".format(var, k) for var in set(self.places) | set(self.additional_vars.keys())])
+    def smtlib_declare(self, k: Optional[int] = None) -> list[str]:
+        return [var if k is None else "{}@{}".format(var, k) for var in set(self.places) | set(self.additional_vars.keys())]
+
+    # def smtlib_non_negative(self, k: Optional[int] = None):
+    #     return ' '.join(map(lambda pl: '(>= {} 0)'.format(pl) if k is None else '(>= {}@{} 0)'.format(pl, k), self.places))
 
     def fast(self) -> str:
         return self.F.fast()
@@ -668,12 +671,12 @@ class Variable(SimpleExpression):
     def fast(self) -> str:
         return self.id
 
-    def smtlib_declare(self, k: Optional[int] = None) -> str:
-        """ Declare the FreeVariable.
+    # def smtlib_declare(self, k: Optional[int] = None) -> str:
+    #     """ Declare the FreeVariable.
 
-        Returns
-        -------
-        str
-            SMT-LIB format.
-        """
-        return "({} Int)".format(self.id) if k is None else "({}@{} Int)".format(self.id, k)
+    #     Returns
+    #     -------
+    #     str
+    #         SMT-LIB format.
+    #     """
+    #     return "({} Int)".format(self.id) if k is None else "({}@{} Int)".format(self.id, k)

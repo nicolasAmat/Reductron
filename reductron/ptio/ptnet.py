@@ -572,22 +572,28 @@ class Sequence:
     def smtlib(self, k: int = 0):
         """ States to SMT-LIB format.
         """
+        print("here")
         if not self.sequence:
+            print("okan")
             return "(true)"
 
-        smt_input = "(>= {} 0)".format(self.saturation_variable)
+        print(self.sequence)
 
-        smt_input += ' '.join(["(>= {} {})".format(pl.smtlib(k), str(hurdle) if self.delta.get(pl) >= 0 else "(+ {} (* {} {}))").format(hurdle, self.saturation_variable, abs(self.delta.get(pl, 0))) for pl, hurdle in self.hurdle.items()])
+        non_negative =  "(>= {} 0)".format(self.saturation_variable)
 
-        smt_input += ' '.join(["(= {} ({} {} (* {} {})))".format(pl.smtlib(k + 1), '-' if delta < 0 else '+', pl.smtlib(k), self.saturation_variable, abs(delta)) for pl, delta in self.delta.items()])
-        
+        update_0 = ' '.join(["(= {} {})".format(pl.smtlib(k + 1), pl.smtlib(k)) for pl in self.delta.keys()])
+
+        hurdle_k = ' '.join(["(>= {} {})".format(pl.smtlib(k), str(hurdle) if self.delta.get(pl) >= 0 else "(+ {} (* (- {} 1) {}))").format(hurdle, self.saturation_variable, abs(self.delta.get(pl, 0))) for pl, hurdle in self.hurdle.items()])
+        update_k = ' '.join(["(= {} ({} {} (* {} {})))".format(pl.smtlib(k + 1), '-' if delta < 0 else '+', pl.smtlib(k), self.saturation_variable, abs(delta)) for pl, delta in self.delta.items()])
+
+        eq = ""
         for pl in self.ptnet.places.values():
             if pl not in set.union(*[set(tr.connected_places) for tr in self.sequence]):
-                smt_input += "(= {} {})".format(pl.smtlib(k + 1), pl.smtlib(k))
+                eq += "(= {} {})".format(pl.smtlib(k + 1), pl.smtlib(k))
+        
+        smt_input = "(or (and (= {} 0) (and {} {})) (and (> {} 0) (and {} {})))".format(self.saturation_variable, update_0, eq, self.saturation_variable, hurdle_k, update_k, eq)
 
-        smt_input = "(and {})".format(smt_input)
-
-        return "(exists ({}) {})".format(self.smtlib_declare(), smt_input)
+        return "(exists ({}) (and {} {}))".format(self.smtlib_declare(), non_negative, smt_input)
 
     def compute_vectors(self):
         for tr in reversed(self.sequence):

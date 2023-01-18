@@ -105,7 +105,7 @@ class Polyhedron:
 
         return smt_input
 
-    def smtlib_declare(self, k1: Optional[int] = None, k2: Optional[int] = None, kx: Optional[int] = None, common: Optional[int] = None, exclude_initial: bool = False, exclude_reduced: bool = False) -> str:
+    def smtlib_declare(self, k1: Optional[int] = None, k2: Optional[int] = None, kx: Optional[int] = None, common: Optional[int] = None, exclude_initial: bool = False, exclude_reduced: bool = False) -> list[str]:
         """ Declare variables.
 
         Parameters
@@ -125,16 +125,16 @@ class Polyhedron:
 
         Returns
         --------
-        str
+        list of str
             SMT-LIB format.
         """
-        smt_input = ""
+        declaration = []
 
         for variable in self.variables:
             if not ((exclude_initial and variable.from_initial) or (exclude_reduced and variable.from_reduced)):
-                smt_input += "({} Int)".format(variable.smtlib(k1, k2, kx, common))
+                declaration.append(variable.smtlib(k1, k2, kx, common))
 
-        return smt_input
+        return declaration
 
     def parser(self, filename: str) -> None:
         """ System of reduction equations parser.

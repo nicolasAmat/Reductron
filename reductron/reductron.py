@@ -59,13 +59,16 @@ def smt_or(constraints: list[str]):
 
     return smt_input
 
+def smt_forall(declaration: list[str], constraint: str):
+    smt_declaration = ' '.join(map(lambda var: "({} Int)".format(var), declaration))
+    smt_non_negative = smt_and(['(>= {} 0)'.format(var) for var in declaration])
+    return "(forall ({}) {})".format(smt_declaration, smt_imply(smt_non_negative, constraint))
 
-def smt_forall(declaration: str, constraint: str):
-    return "(forall ({}) {})".format(declaration, constraint)
 
-
-def smt_exists(declaration: str, constraint: str):
-    return "(exists ({}) {})".format(declaration, constraint)
+def smt_exists(declaration: list[str], constraint: str):
+    smt_declaration = ' '.join(map(lambda var: "({} Int)".format(var), declaration))
+    smt_non_negative = smt_and(['(>= {} 0)'.format(var) for var in declaration])
+    return "(exists ({}) {})".format(smt_declaration, smt_and([smt_non_negative, constraint]))
 
 
 def smt_imply(left, right):
@@ -76,35 +79,72 @@ def smt_equiv(left, right):
     return smt_and([smt_imply(left, right), smt_imply(right, left)])
 
 
+def check_silent_reachability_set(solver: Z3, n1: PetriNet, c1: Presburger, n2: PetriNet, c2: Presburger, e: Polyhedron, tau_star: list[Sequence], on_reduced: bool = False) -> bool:
+    """ Check the silent reachability set of N1 (resp N2) from Fast is conform to E /\ C2 (resp E /\ C1).
 
-def check_silent_reachability_set(solver: Z3, n1: PetriNet, c1: Presburger, n2: PetriNet, c2: Presburger, e: Polyhedron, tau_star: list[Sequence]) -> bool:
-    """ Check.
+        forall p1^k. ((exists p2. E(p1, p2) /\ C(2)) <=> (exists p1^0 ... p^k-1. C1(p1^0) /\ tau_star[0](p1^0, p1^1) /\ ... /\ tau_star[k-1](p1^k-1, p1^k))
     """
-    smt_input = ""
-
     k_max = len(tau_star)
 
-    left_equiv = smt_exists(e.smtlib_declare(k1=k_max, common=k_max, exclude_initial=True), 
-                            smt_and([e.smtlib(k1=k_max, common=k_max), c2.smtlib()]))
+    if not on_reduced:
+        k1 = k_max
+        k2 = None
+        kx = None
+        exclude_initial = True
+        exclude_reduced = False
+    else:
+        k1 = None
+        k2 = k_max
+        kx = None
+        exclude_initial = False
+        exclude_reduced = True
+
+    left_equiv = smt_exists(e.smtlib_declare(k1=k1, k2=k2, kx=kx, common=k_max, exclude_initial=exclude_initial, exclude_reduced=exclude_reduced),
+                            smt_and([e.smtlib(k1=k1, k2=k2, kx=kx, common=k_max), c2.smtlib()]))
     
-    right_equiv = smt_exists(''.join([c1.smtlib_declare(k=k) for k in range(k_max)]), 
-                              smt_and([c1.smtlib(0)] + [sequence.smtlib(k) for k, sequence in enumerate(tau_star)]))
-    
+    if tau_star:
+        right_equiv = smt_exists([var for k in range(k_max) for var in c1.smtlib_declare(k=k)], 
+                                smt_and([c1.smtlib(0)] + [sequence.smtlib(k) for k, sequence in enumerate(tau_star)]))
+    else:
+        right_equiv = c1.smtlib(k=k_max)
+
     smt_input = smt_forall(c1.smtlib_declare(k_max), smt_equiv(left_equiv, right_equiv))
 
     return solver.check_sat(smt_input)
 
-def core_1(solver: Z3, n1: PetriNet, c1: Presburger, n2: PetriNet, c2: Presburger, e: Polyhedron) -> bool:
+def core_1(solver: Z3, n1: PetriNet, c1: Presburger, n2: PetriNet, c2: Presburger, e: Polyhedron, on_reduced: bool = False) -> bool:
     """ Check (CORE 1)
 
-        \forall p1. (C1(p1) \implies \exists p2 x. E(p1, p2, x) /\ C2(P2))
+        forall p1. (C1(p1) => exists p2 x. E(p1, p2, x) /\ C2(P2))
     """
-    left_implies = c1.smtlib()
-    right_implies = smt_exists(e.smtlib_declare(exclude_initial=True), smt_and([e.smtlib(), c2.smtlib()]))
+    if not on_reduced:
+        exclude_initial = True
+        exclude_reduced = False
+    else:
+        exclude_initial = False
+        exclude_reduced = True
 
-    smt_input = smt_forall(n1.smtlib_declare_places(), smt_imply(left_implies, right_implies))
+    left_implies = c1.smtlib()
+    right_implies = smt_exists(e.smtlib_declare(exclude_initial=exclude_initial, exclude_reduced=exclude_reduced), smt_and([e.smtlib(), c2.smtlib()]))
+
+    smt_input = smt_forall(c1.smtlib_declare(), smt_imply(left_implies, right_implies))
 
     return solver.check_sat(smt_input)
+
+
+# def core_2(solver: Z3, n1: PetriNet, c1: Presburger) -> bool:
+#     """ Check (CORE 2)
+
+#         forall p1 p1' l. (C1(p1) /\ T^(C_1)(p1, p1', l) => exists p1'' T^(C1)(p1, p1'', l) /\ C1(p1'') /\ tau*(p1'', p1'))
+#     """
+    
+#     left_implies = c1.smtlib()
+#     right_implies = smt_exists(e.smtlib_declare(exclude_initial=exclude_initial, exclude_reduced=exclude_reduced), smt_and([e.smtlib(), c2.smtlib()]))
+
+#     smt_input = smt_forall(c1.smtlib_declare(), smt_imply(left_implies, right_implies))
+
+#     return solver.check_sat(smt_input)
+
 
 
 def main():
@@ -200,19 +240,29 @@ def main():
     # Instantiate a SMT-solver
     solver = Z3(results.debug)
 
-    check_silent_reachability_set(solver, n1, c1, n2, c2, e, tau1_star) 
+    print("> Check the silent reachability set of N1 from Fast is conform to E /\ C2")
+    print("(Conform):", check_silent_reachability_set(solver, n1, c1, n2, c2, e, tau1_star) )
+
+    print()
+
+    print("> Check the silent reachability set of N2 from Fast is conform to E /\ C1")
+    print("(Conform):", check_silent_reachability_set(solver, n2, c2, n1, c1, e, tau2_star, on_reduced=True) )
+
+    print()
 
     print("> Check that (N2, C2) is a strong E-abstraction of (N1, C1):")
     verdict = core_1(solver, n1, c1, n2, c2, e)
-    print("(CORE 1):", verdict)    
+    print("(CORE 1):", core_1(solver, n1, c1, n2, c2, e))
+    # print("(CORE 2):", core_2(solver, n1, c1))
 
     print()
 
     print("> Check that (N1, C1) is a strong E-abstraction of (N2, C2):")
-    verdict = core_1(solver, n2, c2, n1, c1, e)
-    print("(CORE 1):", verdict)    
+    verdict = core_1(solver, n2, c2, n1, c1, e, on_reduced=True)
+    print("(CORE 1):", core_1(solver, n2, c2, n1, c1, e, on_reduced=True))
+    # print("(CORE 2):", core_2(solver, n2, c2))
 
-        
+
 
 if __name__ == '__main__':
     main()
