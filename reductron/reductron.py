@@ -60,12 +60,16 @@ def smt_or(constraints: list[str]) -> str:
     return smt_input
 
 def smt_forall(declaration: list[str], constraint: str) -> str:
+    if not declaration:
+        return constraint
     smt_declaration = ' '.join(map(lambda var: "({} Int)".format(var), declaration))
     smt_non_negative = smt_and(['(>= {} 0)'.format(var) for var in declaration])
     return "(forall ({}) {})".format(smt_declaration, smt_imply(smt_non_negative, constraint))
 
 
 def smt_exists(declaration: list[str], constraint: str) -> str:
+    if not declaration:
+        return constraint
     smt_declaration = ' '.join(map(lambda var: "({} Int)".format(var), declaration))
     smt_non_negative = smt_and(['(>= {} 0)'.format(var) for var in declaration])
     return "(exists ({}) {})".format(smt_declaration, smt_and([smt_non_negative, constraint]))
@@ -80,21 +84,23 @@ def smt_equiv(left: str, right: str) -> str:
 
 
 def smt_tau_star(e: Polyhedron, k, k_prime, on_reduced: bool = False) -> str:
-    """ 
+    """ tau*(N, C)(k, k_prime)
+
         exists p2. (E(p1, p2) /\ E(p1', p2))
     """
     if not on_reduced:
-        k1, k2, kx, common = k, None, None, k
-        k1_prime, k2_prime, kx_prime, common_prime = k_prime, None, None, k_prime
+        k1, k2, common = k, None, k
+        k1_prime, k2_prime, common_prime = k_prime, None, k_prime
     else:
-        k1, k2, kx, common = None, k, None, k
-        k1_prime, k2_prime, kx_prime, common_prime = None, k_prime, None, k_prime
+        k1, k2, common = None, k, k
+        k1_prime, k2_prime, common_prime = None, k_prime, k_prime
 
-    return smt_exists(e.smtlib_declare(exclude_initial=not on_reduced, exclude_reduced=on_reduced), smt_and([e.smtlib(k1=k1, k2=k2, kx=kx, common=common), e.smtlib(k1=k1_prime, k2=k2_prime, kx=kx_prime, common=common_prime)]))
+    return smt_exists(e.smtlib_declare(exclude_initial=not on_reduced, exclude_reduced=on_reduced), smt_and([e.smtlib(k1=k1, k2=k2, common=common), e.smtlib(k1=k1_prime, k2=k2_prime, common=common_prime)]))
 
 
-def smt_hat_t_from_coherent(n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet, c2: Presburger, k: int, k_prime: int, l: Optional[str] = None, on_reduced: bool = False) -> str:
-    """
+def smt_hat_t(n1: PetriNet, c1: Presburger, e: Polyhedron, k: int, k_prime: int, l: Optional[str] = None, on_reduced: bool = False) -> str:
+    """ T^(N, C)(k, k_prime)
+
         exists p1''. tau*(p1, p1'') /\ T(p'', p')
     """
     k_intermediate = k
@@ -105,92 +111,115 @@ def smt_hat_t_from_coherent(n1: PetriNet, c1: Presburger, e: Polyhedron, n2: Pet
 
 
 def check_silent_reachability_set(solver: Z3, n1: PetriNet, c1: Presburger, n2: PetriNet, c2: Presburger, e: Polyhedron, tau_star: list[Sequence], on_reduced: bool = False) -> bool:
-    """ Check the silent reachability set of N1 (resp N2) from Fast is conform to E /\ C2 (resp E /\ C1).
+    """ Check the silent reachability set of N1 (resp N2) from Fast is equivalent to E /\ C2 (resp E /\ C1).
 
-        forall p1^k. ((exists p2. E(p1, p2) /\ C2(p2)) <=> (exists p1^0 ... p^k-1. C1(p1^0) /\ tau_star[0](p1^0, p1^1) /\ ... /\ tau_star[k-1](p1^k-1, p1^k))
+        forall p1. p1^k. C1(p1) => ((exists p2. E(p1^k, p2) /\ C2(p2)) <=> (exists p1^0 ... p^k-1. tau_star[0](p1^0, p1^1) /\ ... /\ tau_star[k-1](p1^k-1, p1^k))
+
+        F  := forall p1. p1^k. F1
+        F1 := C1(p1) => F2
+        F2 :=  F3 <=> F4
+        F3 := exists p2. F5
+        F4 := exists p1^0 ... p^k-1. F6
+        F5 := E(p1^k, p2) /\ C2(p2)
+        F6 := tau_star[0](p1^0, p1^1) /\ ... /\ tau_star[k-1](p1^k-1, p1^k)
     """
     k_max = len(tau_star)
 
+    if k_max == 0:
+        return True
+
     if not on_reduced:
-        k1 = k_max
-        k2 = None
-        kx = None
-        exclude_initial = True
-        exclude_reduced = False
+        k1, k2, common = k_max, None, k_max
     else:
-        k1 = None
-        k2 = k_max
-        kx = None
-        exclude_initial = False
-        exclude_reduced = True
+        k1, k2, common = None, k_max, k_max
 
-    left_equiv = smt_exists(e.smtlib_declare(k1=k1, k2=k2, kx=kx, common=k_max, exclude_initial=exclude_initial, exclude_reduced=exclude_reduced),
-                            smt_and([e.smtlib(k1=k1, k2=k2, kx=kx, common=k_max), c2.smtlib()]))
+    f6 = smt_and([sequence.smtlib(k) for k, sequence in enumerate(tau_star)])
     
-    if tau_star:
-        right_equiv = smt_exists([var for k in range(k_max) for var in c1.smtlib_declare(k=k)], 
-                                smt_and([c1.smtlib(0)] + [sequence.smtlib(k) for k, sequence in enumerate(tau_star)]))
-    else:
-        right_equiv = c1.smtlib(k=k_max)
+    f5 = smt_and([e.smtlib(k1=0, k2=k2, common=common), e.smtlib(k1=k1, k2=k2, common=common), c2.smtlib()])
 
-    smt_input = smt_forall(c1.smtlib_declare(k_max), smt_equiv(left_equiv, right_equiv))
+    f4 = smt_exists([var for k in range(1, k_max) for var in c1.smtlib_declare(k=k)], f6)
+    
+    f3 = smt_exists(e.smtlib_declare(k1=k1, k2=k2, common=common, exclude_initial=not on_reduced, exclude_reduced=on_reduced), f5)
 
-    return solver.check_sat(smt_input)
+    f2 = smt_equiv(f3, f4)
+
+    f1 = smt_imply(c1.smtlib(0), f2)
+
+    f = smt_forall(c1.smtlib_declare(0) + c1.smtlib_declare(k_max), f1)
+
+    return solver.check_sat(f)
+
 
 def core_1(solver: Z3, n1: PetriNet, c1: Presburger, n2: PetriNet, c2: Presburger, e: Polyhedron, on_reduced: bool = False) -> bool:
     """ Check (CORE 1)
 
-        forall p1. (C1(p1) => exists p2 x. E(p1, p2, x) /\ C2(P2))
+        forall p1. C1(p1) => exists p2. E(p1, p2) /\ C2(P2)
+
+        F  := forall p1. F1
+        F1 := F2 => F3
+        F2 := C1(p1)
+        F3 := exists p2. F4
+        F4 := E(p1, p2) /\ C2(P2)
     """
-    if not on_reduced:
-        exclude_initial = True
-        exclude_reduced = False
-    else:
-        exclude_initial = False
-        exclude_reduced = True
 
-    left_implies = c1.smtlib()
-    right_implies = smt_exists(e.smtlib_declare(exclude_initial=exclude_initial, exclude_reduced=exclude_reduced), smt_and([e.smtlib(), c2.smtlib()]))
+    f4 = smt_and([e.smtlib(), c2.smtlib()])
 
-    smt_input = smt_forall(c1.smtlib_declare(), smt_imply(left_implies, right_implies))
+    f3 = smt_exists(e.smtlib_declare(exclude_initial=not on_reduced, exclude_reduced=on_reduced), f4)
 
-    return solver.check_sat(smt_input)
+    f2 = c1.smtlib()
+
+    f1 = smt_imply(f2, f3)
+
+    f = smt_forall(c1.smtlib_declare(), f1)
+
+    return solver.check_sat(f)
 
 
 def core_2(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet, c2: Presburger, on_reduced: bool = False) -> bool:
     """ Check (CORE 2)
 
-        forall p1 p1' l. (C1(p1) /\ T^(C_1)(p1, p1', l) => exists p1'' T^(C1)(p1, p1'', l) /\ C1(p1'') /\ tau*(p1'', p1'))
+        forall p1 p1' l. C1(p1) /\ T^(C_1)(p1, p1', l) => exists p1'' T^(C1)(p1, p1'', l) /\ C1(p1'') /\ tau*(p1'', p1')
+
+        F  := forall p1 p1' l. F1
+        F1 :=  F2 => F3
+        F2 := C1(p1) /\ T^(C_1)(p1, p1', l)
+        F3 := exists p1''. F4
+        F4 := T^(C1)(p1, p1'', l) /\ C1(p1'') /\ tau*(p1'', p1')
     """
     l, k, k_prime, k_hiatus = "l", 0, 1, 2
 
-    left_imply = smt_and([c1.smtlib(k), smt_hat_t_from_coherent(n1, c1, e, n2, c2, k, k_prime, l, on_reduced=on_reduced)])
-    right_imply = smt_exists(c1.smtlib_declare(k_hiatus), smt_and([smt_hat_t_from_coherent(n1, c1, e, n2, c2, k, k_hiatus, l, on_reduced=on_reduced), c1.smtlib(k_hiatus), smt_tau_star(e, k_hiatus, k_prime, on_reduced=on_reduced)]))
+    f4 = smt_and([smt_hat_t(n1, c1, e, k, k_hiatus, l, on_reduced=on_reduced), c1.smtlib(k_hiatus), smt_tau_star(e, k_hiatus, k_prime, on_reduced=on_reduced)])
 
-    smt_input = smt_forall(c1.smtlib_declare(k) + c1.smtlib_declare(k_prime) + [l], smt_imply(left_imply, right_imply))
+    f3 = smt_exists(c1.smtlib_declare(k_hiatus), f4)
 
-    return solver.check_sat(smt_input)
+    f2 = smt_and([c1.smtlib(k), smt_hat_t(n1, c1, e, k, k_prime, l, on_reduced=on_reduced)])
+
+    f1 = smt_imply(f2, f3)
+
+    f = smt_forall(c1.smtlib_declare(k) + c1.smtlib_declare(k_prime) + [l], f1)
+
+    return solver.check_sat(f)
 
 
 def core_3(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet, c2: Presburger, on_reduced: bool = False) -> bool:
     """ Check (CORE 3)
 
-        forall p1 p2 x p1' x. C1(p1) /\ C2(p2) /\ E(p1, p2, x) /\ T(C1)(p1, p1', l) => exists p2' x'. C2(p2') /\ E(p1', p2', x') /\ T(C2)(p2, p2', l)
+        forall p1 p2 p1'. C1(p1) /\ C2(p2) /\ E(p1, p2) /\ T(C1)(p1, p1', l) => exists p2'. C2(p2') /\ E(p1', p2') /\ T(C2)(p2, p2', l)
 
-        F := forall p1 p2 x. (F1 => F2)
-        F1 := C1(p1) /\ C2(p2) /\ E(p1, p2, x) /\ T(C1)(p1, p1', l)
-        F2 = exists p2' x'. F3
-        F3 := C2(p2') /\ E(p1', p2', x') /\ T(C2)(p2, p2', l)
+        F  := forall p1 p2. (F1 => F2)
+        F1 := C1(p1) /\ C2(p2) /\ E(p1, p2) /\ T(C1)(p1, p1', l)
+        F2 = exists p2'. F3
+        F3 := C2(p2') /\ E(p1', p2') /\ T(C2)(p2, p2', l)
     """
     l, k, k_prime = "l", 0, 1
     
-    f3 = smt_and([c2.smtlib(k_prime), e.smtlib(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime), smt_hat_t_from_coherent(n2, c2, e, n1, c1, k, k_prime, l, on_reduced=not on_reduced)])
+    f3 = smt_and([c2.smtlib(k_prime), e.smtlib(k1=k_prime, k2=k_prime, common=k_prime), smt_hat_t(n2, c2, e, k, k_prime, l, on_reduced=not on_reduced)])
     
-    f2 = smt_exists(e.smtlib_declare(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime, exclude_initial=not on_reduced, exclude_reduced=on_reduced), f3)
+    f2 = smt_exists(e.smtlib_declare(k1=k_prime, k2=k_prime, common=k_prime, exclude_initial=not on_reduced, exclude_reduced=on_reduced), f3)
     
-    f1 = smt_and([c1.smtlib(k), c2.smtlib(k), e.smtlib(k1=k, k2=k, kx=k, common=k), smt_hat_t_from_coherent(n1, c1, e, n2, c2, k, k_prime, l, on_reduced=on_reduced)])
+    f1 = smt_and([c1.smtlib(k), c2.smtlib(k), e.smtlib(k1=k, k2=k, common=k), smt_hat_t(n1, c1, e, k, k_prime, l, on_reduced=on_reduced)])
     
-    f = smt_forall(e.smtlib_declare(k1=k, k2=k, kx=k, common=k) + e.smtlib_declare(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime, exclude_initial=on_reduced, exclude_reduced=not on_reduced) + ["l"], smt_imply(f1, f2))
+    f = smt_forall(e.smtlib_declare(k1=k, k2=k, common=k) + c1.smtlib_declare(k_prime) + ["l"], smt_imply(f1, f2))
 
     return solver.check_sat(f)
 
@@ -198,33 +227,57 @@ def core_3(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet
 def core_4(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet, c2: Presburger, on_reduced: bool = False) -> bool:
     """ Check (CORE 4)
 
-        forall p1 p2 x. C1(p1) /\ C2(p2) /\ E(p1, p2, x) => forall p1' x'. tau*(p1, p1') => E(p1', p2)
+        forall p1 p2 p1'. C1(p1) /\ C2(p2) /\ E(p1, p2) /\ tau*(p1, p1') => E(p1', p2)
 
-        F := forall p1 p2 x. F1
+        F  := forall p1 p2 p1'. F1
         F1 := F2 => F3
-        F2 := C1(p1) /\ C2(p2) /\ E(p1, p2, x)
-        F3 := forall p1' x'. F4
-        F4 := tau*(p1, p1') => E(p1', p2, x')
+        F2 := C1(p1) /\ C2(p2) /\ E(p1, p2) /\ tau*(p1, p1')
+        F3 := E(p1', p2)
     """
     k, k_prime = 0, 1
 
     if not on_reduced:
-        k1_prime, k2_prime, kx_prime, common_prime = k_prime, k, k_prime, k_prime
+        k1_prime, k2_prime, common_prime = k_prime, k, k_prime
     else:
-        k1_prime, k2_prime, kx_prime, common_prime = k, k_prime, k_prime, k_prime
+        k1_prime, k2_prime, common_prime = k, k_prime, k_prime
     
-    f4 = smt_imply(smt_tau_star(e, k, k_prime, on_reduced=on_reduced), e.smtlib(k1=k1_prime, k2=k2_prime, kx=kx_prime, common=common_prime))
+    f3 = e.smtlib(k1=k1_prime, k2=k2_prime, common=common_prime)
     
-    f3 = smt_forall(e.smtlib_declare(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime, exclude_initial=on_reduced, exclude_reduced=not on_reduced), f4)
-    
-    f2 = smt_and([c1.smtlib(k), c2.smtlib(k), e.smtlib(k1=k, k2=k, kx=k, common=k)])
+    f2 = smt_and([c1.smtlib(k), c2.smtlib(k), e.smtlib(k1=k, k2=k, common=k), smt_tau_star(e, k, k_prime, on_reduced=on_reduced)])
 
     f1 = smt_imply(f2, f3)
 
-    smt_input = smt_forall(e.smtlib_declare(k1=k, k2=k, kx=k, common=k), f1)
+    f = smt_forall(e.smtlib_declare(k1=k, k2=k, common=k) + c1.smtlib_declare(k_prime), f1)
 
-    return solver.check_sat(smt_input)
+    return solver.check_sat(f)
 
+
+def core_5(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet, c2: Presburger, on_reduced: bool = False) -> bool:
+    """ Check (CORE 5)
+
+        forall p1 p2 p1'. C1(p1) /\ C2(p2) /\ E(p1, p2) /\ E(p1', p2) => tau*(p1, p1')
+
+        F := forall p1 p2 p1'. F1
+        F1 := F2 => F3
+        F2 := C1(p1) /\ C2(p2) /\ E(p1, p2) /\ E(p1', p2)
+        F3 := tau*(p1, p1')
+    """
+    k, k_prime = 0, 1
+
+    if not on_reduced:
+        k1_prime, k2_prime, common_prime = k_prime, k, k_prime
+    else:
+        k1_prime, k2_prime, common_prime = k, k_prime, k_prime
+    
+    f3 = smt_tau_star(e, k, k_prime, on_reduced=on_reduced)
+    
+    f2 = smt_and([c1.smtlib(k), c2.smtlib(k), e.smtlib(k1=k, k2=k, common=k), e.smtlib(k1=k1_prime, k2=k2_prime, common=common_prime)])
+
+    f1 = smt_imply(f2, f3)
+
+    f = smt_forall(e.smtlib_declare(k1=k, k2=k, common=k) + e.smtlib_declare(k1=k1_prime, k2=k2_prime, common=common_prime, exclude_initial=on_reduced, exclude_reduced=not on_reduced), f1)
+
+    return solver.check_sat(f)
 
 
 def main():
@@ -305,13 +358,13 @@ def main():
     log.info("")
 
     # Compute tau*
-    tau1_star = tau_star(n1, c1)
+    tau1_star = tau_star(n1, c1, results.debug)
     log.info("tau1*:")
     log.info("------")
     log.info(''.join(map(str, tau1_star)))
     log.info("")
 
-    tau2_star = tau_star(n2, c2)
+    tau2_star = tau_star(n2, c2, results.debug)
     log.info("tau2*:")
     log.info("------")
     log.info(''.join(map(str, tau2_star)))
@@ -331,21 +384,20 @@ def main():
     print()
 
     print("> Check that (N2, C2) is a strong E-abstraction of (N1, C1):")
-    verdict = core_1(solver, n1, c1, n2, c2, e)
     print("(CORE 1):", core_1(solver, n1, c1, n2, c2, e))
     print("(CORE 2):", core_2(solver, n1, c1, e, n2, c2))
     print("(CORE 3):", core_3(solver, n1, c1, e, n2, c2))
-    print("(CORE 4):", core_4(solver, n2, c2, e, n1, c1))
+    print("(CORE 4):", core_4(solver, n1, c1, e, n2, c2))
+    print("(CORE 5):", core_5(solver, n1, c1, e, n2, c2))
 
     print()
 
     print("> Check that (N1, C1) is a strong E-abstraction of (N2, C2):")
-    verdict = core_1(solver, n2, c2, n1, c1, e, on_reduced=True)
     print("(CORE 1):", core_1(solver, n2, c2, n1, c1, e, on_reduced=True))
     print("(CORE 2):", core_2(solver, n2, c2, e, n1, c1, on_reduced=True))
     print("(CORE 3):", core_3(solver, n2, c2, e, n1, c1, on_reduced=True))
     print("(CORE 4):", core_4(solver, n2, c2, e, n1, c1, on_reduced=True))
-
+    print("(CORE 5):", core_5(solver, n2, c2, e, n1, c1, on_reduced=True))
 
 
 if __name__ == '__main__':

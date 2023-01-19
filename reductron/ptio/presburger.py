@@ -137,11 +137,11 @@ class Presburger:
     def smtlib_declare(self, k: Optional[int] = None) -> list[str]:
         return [var if k is None else "{}@{}".format(var, k) for var in set(self.places) | set(self.additional_vars.keys())]
 
-    # def smtlib_non_negative(self, k: Optional[int] = None):
-    #     return ' '.join(map(lambda pl: '(>= {} 0)'.format(pl) if k is None else '(>= {}@{} 0)'.format(pl, k), self.places))
-
     def fast(self) -> str:
-        return self.F.fast()
+        return ' && '.join(map(lambda pl: "({} = K_{})".format(pl, pl), self.places)) + ' && ' + self.F.fast()
+
+    def fast_variables(self) -> list[str]:
+        return ["K_{}".format(pl, pl) for pl in self.places]
 
     def parse_coherency_constraint(self, filename: str) -> None:
         """ Parse coherency constraint.
@@ -563,7 +563,7 @@ class TokenCount(SimpleExpression):
         return smt_input
 
     def fast(self) -> str:
-        fast_input = ' + '.join(map(lambda pl: pl if self.multipliers is None or pl not in self.multipliers else "{} * {}".format(pl.id, self.multipliers[pl]), self.places))
+        fast_input = ' + '.join(map(lambda pl: "K_{}".format(pl) if self.multipliers is None or pl not in self.multipliers else "K_{} * {}".format(pl.id, self.multipliers[pl]), self.places))
 
         if len(self.places) > 1:
             fast_input = "({})".format(fast_input)
@@ -670,13 +670,3 @@ class Variable(SimpleExpression):
 
     def fast(self) -> str:
         return self.id
-
-    # def smtlib_declare(self, k: Optional[int] = None) -> str:
-    #     """ Declare the FreeVariable.
-
-    #     Returns
-    #     -------
-    #     str
-    #         SMT-LIB format.
-    #     """
-    #     return "({} Int)".format(self.id) if k is None else "({}@{} Int)".format(self.id, k)

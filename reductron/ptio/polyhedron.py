@@ -79,7 +79,7 @@ class Polyhedron:
         """
         return '\n'.join(map(str, self.equations))
 
-    def smtlib(self, k1: Optional[int] = None, k2: Optional[int] = None, kx: Optional[int] = None, common: Optional[int] = None) -> str:
+    def smtlib(self, k1: Optional[int] = None, k2: Optional[int] = None, common: Optional[int] = None) -> str:
         """ Declare the additional variables and assert the equations.
 
         Parameters
@@ -88,8 +88,6 @@ class Polyhedron:
             Order for the initial places.
         k2 : int, optional
             Order for the reduced places.
-        kx : int, optional
-            Order for the additional variables.
         common : int, optional
             Order for common places.
 
@@ -98,14 +96,17 @@ class Polyhedron:
         str
             SMT-LIB format.
         """
-        smt_input = ' '.join(map(lambda eq: eq.smtlib(k1, k2, kx, common), self.equations))
+        smt_input = ' '.join(map(lambda eq: eq.smtlib(k1, k2, common), self.equations))
         
         if len(self.equations) > 1:
             smt_input = "(and {})".format(smt_input)
 
+        if self.additional_vars:
+            smt_input = "(exists ({}) {})".format(''.join(map(lambda var: "({} Int)".format(var), self.additional_vars)), smt_input)
+
         return smt_input
 
-    def smtlib_declare(self, k1: Optional[int] = None, k2: Optional[int] = None, kx: Optional[int] = None, common: Optional[int] = None, exclude_initial: bool = False, exclude_reduced: bool = False) -> list[str]:
+    def smtlib_declare(self, k1: Optional[int] = None, k2: Optional[int] = None, common: Optional[int] = None, exclude_initial: bool = False, exclude_reduced: bool = False) -> list[str]:
         """ Declare variables.
 
         Parameters
@@ -114,8 +115,6 @@ class Polyhedron:
             Order for the initial places.
         k2 : int, optional
             Order for the reduced places.
-        kx : int, optional
-            Order for the additional variables.
         common : int, optional
             Order for common places.
         exclude_initial : bool, optional
@@ -131,8 +130,8 @@ class Polyhedron:
         declaration = []
 
         for variable in self.variables:
-            if not ((exclude_initial and variable.from_initial) or (exclude_reduced and variable.from_reduced)):
-                declaration.append(variable.smtlib(k1, k2, kx, common))
+            if not ((exclude_initial and variable.from_initial) or (exclude_reduced and variable.from_reduced) or variable.from_additional):
+                declaration.append(variable.smtlib(k1, k2, common))
 
         return declaration
 
@@ -202,7 +201,7 @@ class Equation:
         """
         return ' + '.join(map(str, self.left)) + ' = ' + ' + '.join(map(str, self.right))
 
-    def smtlib(self, k1: Optional[int] = None, k2: Optional[int] = None, kx: Optional[int] = None, common: Optional[int] = None) -> str:
+    def smtlib(self, k1: Optional[int] = None, k2: Optional[int] = None, common: Optional[int] = None) -> str:
         """ Assert the Equation.
 
         Parameters
@@ -211,8 +210,6 @@ class Equation:
             Order for the initial places.
         k2 : int, optional
             Order for the reduced places.
-        kx : int, optional
-            Order for the additional variables.
         common : int, optional
             Order for common places.
         
@@ -221,9 +218,9 @@ class Equation:
         str
             SMT-LIB format.
         """
-        return "({} {} {})".format(self.operator, self.member_smtlib(self.left, k1=k1, k2=k2, kx=kx, common=common), self.member_smtlib(self.right, k1=k1, k2=k2, kx=kx, common=common))
+        return "({} {} {})".format(self.operator, self.member_smtlib(self.left, k1=k1, k2=k2, common=common), self.member_smtlib(self.right, k1=k1, k2=k2, common=common))
 
-    def member_smtlib(self, member: list[Variable], k1: Optional[int] = None, k2: Optional[int] = None, kx: Optional[int] = None, common: Optional[int] = None) -> str:
+    def member_smtlib(self, member: list[Variable], k1: Optional[int] = None, k2: Optional[int] = None, common: Optional[int] = None) -> str:
         """ Helper to assert a member (left or right).
 
         Parameters
@@ -234,8 +231,6 @@ class Equation:
             Order for the initial places.
         k2 : int, optional
             Order for the reduced places.
-        kx : int, optional
-            Order for the additional variables.
         common : int, optional
             Order for common places.
     
@@ -244,7 +239,7 @@ class Equation:
         str
             SMT-LIB format.
         """
-        smt_input = ' '.join(map(lambda var: var.smtlib(k1=k1, k2=k2, kx=kx, common=common), member))
+        smt_input = ' '.join(map(lambda var: var.smtlib(k1=k1, k2=k2, common=common), member))
 
         if len(member) > 1:
             smt_input = "(+ {})".format(smt_input)
@@ -394,7 +389,7 @@ class Variable:
 
         return text + self.id
 
-    def smtlib(self, k1: Optional[int] = None, k2: Optional[int] = None, kx: Optional[int] = None, common: Optional[int] = None) -> str:
+    def smtlib(self, k1: Optional[int] = None, k2: Optional[int] = None, common: Optional[int] = None) -> str:
         """ Assert the Variable and its multiplier if needed.
 
         Parameters
@@ -403,8 +398,6 @@ class Variable:
             Order for the initial places.
         k2 : int, optional
             Order for the reduced places.
-        kx : int, optional
-            Order for the additional variables.
         common : int, optional
             Order for common places.
 
@@ -421,8 +414,6 @@ class Variable:
             smt_input += "@{}".format(k1)
         elif self.from_reduced and k2 is not None:
             smt_input += "@{}".format(k2)
-        elif self.from_additional and kx is not None:
-            smt_input += "@{}".format(kx)
 
         if self.multiplier is not None:
             smt_input = "(* {} {})".format(self.multiplier, smt_input)

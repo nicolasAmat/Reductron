@@ -34,7 +34,7 @@ from reductron.ptio.ptnet import PetriNet, Transition, Sequence
 from reductron.ptio.presburger import Presburger
 
 
-def tau_star(ptnet: PetriNet, region: Presburger) -> list[list[Transition]]:
+def tau_star(ptnet: PetriNet, region: Presburger, debug: bool = False) -> list[list[Transition]]:
     """ Compute tau star
 
     Parameters
@@ -70,16 +70,23 @@ def tau_star(ptnet: PetriNet, region: Presburger) -> list[list[Transition]]:
 
     fst = xsltproc.stdout.decode('utf-8').splitlines()
 
-    region_index = None
+    var_index, region_index = None, None
     for index, line in enumerate(fst):
+        if 'var ' in line:
+            var_index = index
         if ' Region init :=' in line:
             region_index = index
             break
 
-    if not region_index:
+    if not (var_index and region_index):
         sys.exit("Error: xsltproc failed!")
 
-    fst[index] = ' Region init := {{{} && state=marking}};'.format(region.fast())
+    fst[var_index] = fst[var_index].replace(';', '') + ', ' + ', '.join(region.fast_variables()) + ';'
+
+    fst[region_index] = ' Region init := {{{} && state=marking}};'.format(region.fast())
+
+    if debug:
+        print('\n'.join(fst))
 
     fast_fp = tempfile.NamedTemporaryFile(suffix='.fst', mode="w")
     fast_fp.write('\n'.join(fst))
@@ -94,6 +101,10 @@ def tau_star(ptnet: PetriNet, region: Presburger) -> list[list[Transition]]:
 
     sequences, counter = [], 0
     for line in fast.stderr.decode('utf-8').splitlines():
+        
+        if debug:
+            print(line)
+        
         if 'OK !' in line:
             sequences.append(Sequence(ptnet, "tau{}".format(counter), [ptnet.transitions[line.split(' ')[2]]]))
             counter += 1
