@@ -175,23 +175,24 @@ def core_2(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet
 def core_3(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet, c2: Presburger, on_reduced: bool = False) -> bool:
     """ Check (CORE 3)
 
-        forall p1 p2 x. C1(p1) /\ C2(p2) /\ E(p1, p2, x) => forall p1' p2' x' l. T(C1)(p1, p1', l) /\ E(p1', p2', x') /\ C2(p2') => T(C2)(p2, p2', l)
+        forall p1 p2 x p1' x. C1(p1) /\ C2(p2) /\ E(p1, p2, x) /\ T(C1)(p1, p1', l) => exists p2' x'. C2(p2') /\ E(p1', p2', x') /\ T(C2)(p2, p2', l)
 
         F := forall p1 p2 x. (F1 => F2)
-        F1 := C1(p1) /\ C2(p2) /\ E(p1, p2, x)
-        F2 = forall p1' p2' x' l. F3 => F4 
-        F3 := T(C1)(p1, p1', l) /\ E(p1', p2', x') /\ C2(p2')
-        F4 := T(C2)(p2, p2', l)
+        F1 := C1(p1) /\ C2(p2) /\ E(p1, p2, x) /\ T(C1)(p1, p1', l)
+        F2 = exists p2' x'. F3
+        F3 := C2(p2') /\ E(p1', p2', x') /\ T(C2)(p2, p2', l)
     """
     l, k, k_prime = "l", 0, 1
     
-    f4 = smt_hat_t_from_coherent(n2, c2, e, n1, c1, k, k_prime, l, on_reduced=not on_reduced)
-    f3 = smt_and([smt_hat_t_from_coherent(n1, c1, e, n2, c2, k, k_prime, l, on_reduced=on_reduced), e.smtlib(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime), c2.smtlib(k=k_prime)])
-    f2 = smt_forall(e.smtlib_declare(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime) + [l], smt_imply(f3, f4))
-    f1 = smt_and([c1.smtlib(k), c2.smtlib(k), e.smtlib(k1=k, k2=k, kx=k, common=k)])
-    smt_input = smt_forall(e.smtlib_declare(k1=k, k2=k, kx=k, common=k), smt_imply(f1, f2))
+    f3 = smt_and([c2.smtlib(k_prime), e.smtlib(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime), smt_hat_t_from_coherent(n2, c2, e, n1, c1, k, k_prime, l, on_reduced=not on_reduced)])
+    
+    f2 = smt_exists(e.smtlib_declare(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime, exclude_initial=not on_reduced, exclude_reduced=on_reduced), f3)
+    
+    f1 = smt_and([c1.smtlib(k), c2.smtlib(k), e.smtlib(k1=k, k2=k, kx=k, common=k), smt_hat_t_from_coherent(n1, c1, e, n2, c2, k, k_prime, l, on_reduced=on_reduced)])
+    
+    f = smt_forall(e.smtlib_declare(k1=k, k2=k, kx=k, common=k) + e.smtlib_declare(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime, exclude_initial=on_reduced, exclude_reduced=not on_reduced) + ["l"], smt_imply(f1, f2))
 
-    return solver.check_sat(smt_input)
+    return solver.check_sat(f)
 
 
 def core_4(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet, c2: Presburger, on_reduced: bool = False) -> bool:
@@ -217,7 +218,7 @@ def core_4(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet
     f3 = smt_forall(e.smtlib_declare(k1=k_prime, k2=k_prime, kx=k_prime, common=k_prime, exclude_initial=on_reduced, exclude_reduced=not on_reduced), f4)
     
     f2 = smt_and([c1.smtlib(k), c2.smtlib(k), e.smtlib(k1=k, k2=k, kx=k, common=k)])
-    
+
     f1 = smt_imply(f2, f3)
 
     smt_input = smt_forall(e.smtlib_declare(k1=k, k2=k, kx=k, common=k), f1)
