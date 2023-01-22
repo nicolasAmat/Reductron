@@ -42,13 +42,17 @@ class Polyhedron:
         A list of place identifiers from the initial Petri net.
     places_reduced : list of str
         A list of place identifiers from the reduced Petri net.
+    additional_initial : list of str
+            A list of additional variables from the initial Petri net.
+    additional_reduced : list of str
+        A list of additional variables from the reduced Petri net.
     additional_vars : list of Variable
         A list of additional variables (not places).
     equations : list of Equation
         A list of (in)equations.
     """
 
-    def __init__(self, filename: str, places_initial: list[str], places_reduced: list[str]) -> None:
+    def __init__(self, filename: str, places_initial: list[str], places_reduced: list[str], additional_initial: list[str], additional_reduced: list[str]) -> None:
         """ Initializer.
 
         Parameters
@@ -59,9 +63,17 @@ class Polyhedron:
             A list of place identifiers from the initial Petri net.
         places_reduced : list of str
             A list of place identifiers from the reduced Petri net.
+        additional_initial : list of str
+            A list of additional variables from the initial Petri net.
+        additional_reduced : list of str
+            A list of additional variables from the reduced Petri net.
         """
         self.places_initial: list[str] = places_initial
         self.places_reduced: list[str] = places_reduced
+
+        self.additional_initial : list[str] = additional_initial
+        self.additional_reduced : list[str] = additional_reduced
+
         self.additional_vars: list[str] = []
 
         self.equations: list[Equation] = []
@@ -130,7 +142,7 @@ class Polyhedron:
         declaration = []
 
         for variable in self.variables:
-            if not ((exclude_initial and variable.from_initial) or (exclude_reduced and variable.from_reduced) or variable.from_additional):
+            if (variable.from_initial and (not exclude_initial or variable.from_reduced)) or (variable.from_reduced and (not exclude_reduced or variable.from_initial)):
                 declaration.append(variable.smtlib(k1, k2, common))
 
         return declaration
@@ -313,18 +325,20 @@ class Equation:
         Variable
             Instantiated variable.
         """
-        from_initial, from_reduced, from_additional = False, False, False
+        from_initial, from_reduced, from_additional, from_coherency_constraint = False, False, False, False
 
         if not variable.isnumeric():
             if variable in polyhedron.places_initial:
                 from_initial = True
-            elif variable in polyhedron.places_reduced:
+            if variable in polyhedron.places_reduced:
                 from_reduced = True
-            else:
+            if variable in polyhedron.additional_initial or variable in polyhedron.additional_reduced:
+                from_coherency_constraint = True
+            if not (from_initial or from_reduced or from_coherency_constraint):
                 from_additional = True
                 polyhedron.additional_vars.append(variable)
 
-        instantiated_variable = Variable(variable, multiplier, from_initial, from_reduced, from_additional)
+        instantiated_variable = Variable(variable, multiplier, from_initial, from_reduced, from_coherency_constraint, from_additional)
         polyhedron.variables.append(instantiated_variable)
         
         return instantiated_variable
@@ -347,11 +361,13 @@ class Variable:
         Is from initial net.
     from_reduced : bool
         Is from reduced net.
+    from_coherency_constraint : bool, optional
+            Is from coherency constraint.
     from_additional : bool
         Is from additional variables.
     """
 
-    def __init__(self, id: str, multiplier: Optional[str] = None, from_initial: bool = False, from_reduced: bool = False, from_additional: bool = False) -> None:
+    def __init__(self, id: str, multiplier: Optional[str] = None, from_initial: bool = False, from_reduced: bool = False, from_coherency_constraint: bool = False, from_additional: bool = False) -> None:
         """ Initializer.
 
         Parameters
@@ -364,6 +380,8 @@ class Variable:
             Is from initial net.
         from_reduced : bool, optional
             Is from reduced net.
+        from_coherency_constraint : bool, optional
+            Is from coherency constraint.
         from_additional : bool, optional
             Is from additional variables.
         """
@@ -372,6 +390,9 @@ class Variable:
 
         self.from_initial: bool = from_initial
         self.from_reduced: bool = from_reduced
+
+        self.from_coherency_constraint: bool = from_coherency_constraint
+
         self.from_additional: bool = from_additional
 
     def __str__(self) -> str:

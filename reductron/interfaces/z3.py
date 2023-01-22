@@ -2,20 +2,20 @@
 """
 z3 Interface
 
-This file is part of SMPT.
+This file is part of Reductron.
 
-SMPT is free software: you can redistribute it and/or modify
+Reductron is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-SMPT is distributed in the hope that it will be useful,
+Reductron is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with SMPT. If not, see <https://www.gnu.org/licenses/>.
+along with Reductron. If not, see <https://www.gnu.org/licenses/>.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from __future__ import annotations
 __author__ = "Nicolas AMAT, LAAS-CNRS"
 __contact__ = "namat@laas.fr"
 __license__ = "GPLv3"
-__version__ = "4.0.0"
+__version__ = "1.0"
 
 import logging as log
 import sys
@@ -70,8 +70,7 @@ class Z3:
         process = ['z3', '-in']
         if timeout:
             process.append('-T:{}'.format(timeout))
-        self.solver: Popen = Popen(process, stdin=PIPE,
-                                   stdout=PIPE, start_new_session=True)
+        self.solver: Popen = Popen(process, stdin=PIPE, stdout=PIPE)
 
         # Flags
         self.aborted: bool = False
@@ -178,3 +177,38 @@ class Z3:
 
         return None
 
+
+def smt_and(constraints: list[str]) -> str:
+    if not constraints:
+        return "true"
+
+    smt_input = ' '.join(constraints)
+
+    if len(constraints) > 1:
+        smt_input = '(and {})'.format(smt_input)
+
+    return smt_input
+
+
+def smt_forall(declaration: list[str], constraint: str) -> str:
+    if not declaration:
+        return constraint
+    smt_declaration = ' '.join(map(lambda var: "({} Int)".format(var), declaration))
+    smt_non_negative = smt_and(['(>= {} 0)'.format(var) for var in declaration])
+    return "(forall ({}) {})".format(smt_declaration, smt_imply(smt_non_negative, constraint))
+
+
+def smt_exists(declaration: list[str], constraint: str) -> str:
+    if not declaration:
+        return constraint
+    smt_declaration = ' '.join(map(lambda var: "({} Int)".format(var), declaration))
+    smt_non_negative = smt_and(['(>= {} 0)'.format(var) for var in declaration])
+    return "(exists ({}) {})".format(smt_declaration, smt_and([smt_non_negative, constraint]))
+
+
+def smt_imply(left: str, right: str) -> str:
+    return "(=> {} {})".format(left, right)
+
+
+def smt_equiv(left: str, right: str) -> str:
+    return smt_and([smt_imply(left, right), smt_imply(right, left)])

@@ -6,12 +6,12 @@ Standard: http://projects.laas.fr/tina//manuals/formats.html
 
 This file is part of Reductron.
 
-Reduction is free software: you can redistribute it and/or modify
+Reductron is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-Reduction is distributed in the hope that it will be useful,
+Reductron is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
@@ -106,31 +106,6 @@ class PetriNet:
 
         return text
 
-    def smtlib_declare_places(self, k: Optional[int] = None) -> str:
-        """ Declare places.
-
-        Parameters
-        ----------
-        k : int, optional
-            Order.
-
-        Returns
-        -------
-        str
-            SMT-LIB format.
-        """
-        return ''.join(map(lambda pl: pl.smtlib_declare(k), self.places.values()))
-
-    def smtlib_declare_transitions(self) -> str:
-        """ Declare transitions.
-        
-        Returns
-        -------
-        str
-            SMT-LIB format.
-        """
-        return ''.join(map(lambda tr: tr.smtlib_declare(), self.transitions.values()))
-
     def smtlib_transition_relation(self, k: int, k_prime: int, l: Optional[str] = None, eq: bool = True) -> str:
         """ Transition relation from places at order k to order k_prime.
         
@@ -153,7 +128,6 @@ class PetriNet:
         if not self.transitions:
             return "true"
 
-
         smt_input += ''.join(map(lambda tr: tr.smtlib(k, k_prime, l),self.labeled_transitions))
 
         if eq:
@@ -163,6 +137,36 @@ class PetriNet:
             smt_input += ''.join(map(lambda pl: "(= {}@{} {}@{})".format(pl.id, k_prime, pl.id, k), self.places.values()))
             smt_input += "\n\t)"
         smt_input = "\n(or\n{}\n)\n".format(smt_input)
+
+        return smt_input
+
+    def smtlib_silent_transition_relation(self, k: int, k_prime: int) -> str:
+        """ Silent transition relation from places at order k to order k_prime.
+        
+        Parameters
+        ----------
+        k : int
+            Starting order.
+        k_prime : int
+            Resulting order.
+
+        Returns
+        -------
+        str
+            SMT-LIB format.
+        """
+        smt_input = ""
+
+        smt_input += ''.join(map(lambda tr: tr.smtlib(k, k_prime), self.silent_transitions))
+
+        smt_input += "\t(and\n\t\t"
+        smt_input += ''.join(map(lambda pl: "(= {}@{} {}@{})".format(pl.id, k_prime, pl.id, k), self.places.values()))
+        smt_input += "\n\t)"
+
+        if self.silent_transitions:
+            smt_input = "(or\n{}\n)".format(smt_input)
+
+        smt_input = "\n{}\n".format(smt_input)
 
         return smt_input
 
@@ -395,20 +399,6 @@ class Place:
         """
         return "{}@{}".format(self.id, k) if k is not None else self.id
 
-    def smtlib_declare(self, k: Optional[int] = None) -> str:
-        """ Declare a place.
-
-        Parameters
-        ----------
-        k : int, optional
-
-        Returns
-        -------
-        str
-            SMT-LIB format.
-        """
-        return "({} Int)".format(self.smtlib(k))
-
 
 class Transition:
     """ Transition.
@@ -540,16 +530,6 @@ class Transition:
         smt_input += "\n\t)\n"
 
         return smt_input
-
-    def smtlib_declare(self) -> str:
-        """ Declare a transition.
-
-        Returns
-        -------
-        str
-            SMT-LIB format.
-        """
-        return "({} Int)".format(self.id)
 
 
 class Sequence:

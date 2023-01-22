@@ -26,10 +26,10 @@ __version__ = "4.0.0"
 
 import operator
 import re
+import sys
 from abc import ABC, abstractmethod
 from collections import deque
 from typing import Optional, Sequence
-import sys
 
 TRANSLATION_COMPARISON_OPERATORS = {
     '=': operator.eq,
@@ -85,6 +85,8 @@ class Presburger:
         Set of places.
     identifier : str
         Associated identifier.
+    additional_vars : list of str
+        Additional variables in E.
     F: Expression, optional
         Formula.
     """
@@ -104,7 +106,7 @@ class Presburger:
         self.places: set[str] = places
         self.identifier: str = identifier
 
-        self.additional_vars: dict[str, Variable] = {}
+        self.additional_vars: list[str] = []
 
         self.F: Optional[Expression] = None
 
@@ -134,8 +136,8 @@ class Presburger:
         """
         return self.F.smtlib(k)
 
-    def smtlib_declare(self, k: Optional[int] = None) -> list[str]:
-        return [var if k is None else "{}@{}".format(var, k) for var in set(self.places) | set(self.additional_vars.keys())]
+    def smtlib_declare(self) -> list[str]:
+        return self.additional_vars
 
     def fast(self) -> str:
         return ' && '.join(map(lambda pl: "({} = K_{})".format(pl, pl), self.places)) + ' && ' + self.F.fast()
@@ -214,22 +216,24 @@ class Presburger:
             return tokens
 
         def _member_constructor(member):
-            places, integer_constant, multipliers = [], 0, {}
+            places, additional_variables, integer_constant, multipliers = [], [], 0, {}
             for element in member.split('+'):
                 if element.isnumeric():
                     integer_constant += int(element)
                 else:
                     split_element = element.split('*')
-                    place = split_element[-1]
-                    if place not in self.places:
-                        self.additional_vars[place] = Variable(place)
-                    places.append(place)
+                    variable = split_element[-1]
+                    if variable not in self.places:
+                        additional_variables.append(variable)
+                        self.additional_vars.append(variable)
+                    else:
+                        places.append(variable)
 
                     if len(split_element) > 1:
-                        multipliers[place] = int(split_element[0])
+                        multipliers[variable] = int(split_element[0])
 
-            if places:
-                return TokenCount(places)
+            if places or additional_variables:
+                return TokenCount(places, additional_variables, multipliers)
             else:
                 return IntegerConstant(integer_constant)
 
@@ -529,7 +533,7 @@ class TokenCount(SimpleExpression):
         Place multipliers (missing if 1).
     """
 
-    def __init__(self, places: list[str], multipliers: Optional[dict[str, int]] = None):
+    def __init__(self, places: list[str], additional_variables: list[str], multipliers: Optional[dict[str, int]] = None):
         """ Initializer.
 
         Parameters
@@ -540,12 +544,14 @@ class TokenCount(SimpleExpression):
             Place multipliers (missing if 1).
         """
         self.places: list[str] = places
+        self.additional_variables: list[str] = additional_variables
+
         self.multipliers: dict[str, int] = multipliers
 
     def __str__(self) -> str:
-        text = ' + '.join(map(lambda pl: pl if self.multipliers is None or pl not in self.multipliers else "({}.{})".format(self.multipliers[pl], pl), self.places))
+        text = ' + '.join(map(lambda pl: pl if self.multipliers is None or pl not in self.multipliers else "({}.{})".format(self.multipliers[pl], pl), self.places + self.additional_variables))
 
-        if len(self.places) > 1:
+        if len(self.places) + len(self.additional_variables) > 1:
             text = "({})".format(text)
 
         return text
@@ -555,15 +561,18 @@ class TokenCount(SimpleExpression):
             smtlib = pl if k is None else "{}@{}".format(pl, k)
             return  smtlib if self.multipliers is None or pl not in self.multipliers else "(* {} {})".format(smtlib, self.multipliers[pl])
 
-        smt_input = ' '.join(map(lambda pl: place_smtlib(pl, k), self.places))
+        def variable_smtlib(var):
+            return var if self.multipliers is None or var not in self.multipliers else "(* {} {})".format(var, self.multipliers[var])
 
-        if len(self.places) > 1:
+        smt_input = ' '.join([' '.join(map(lambda pl: place_smtlib(pl, k), self.places)), ' '.join(map(lambda var: variable_smtlib(var), self.additional_variables))])
+
+        if len(self.places) + len(self.additional_variables) > 1:
             smt_input = "(+ {})".format(smt_input)
 
         return smt_input
 
     def fast(self) -> str:
-        fast_input = ' + '.join(map(lambda pl: "K_{}".format(pl) if self.multipliers is None or pl not in self.multipliers else "K_{} * {}".format(pl.id, self.multipliers[pl]), self.places))
+        fast_input = ' + '.join(map(lambda pl: "K_{}".format(pl) if self.multipliers is None or pl not in self.multipliers else "K_{} * {}".format(pl.id, self.multipliers[pl]), self.places + self.additional_variables))
 
         if len(self.places) > 1:
             fast_input = "({})".format(fast_input)
@@ -644,29 +653,3 @@ class ArithmeticOperation(SimpleExpression):
         return "({} {})".format(self.operator, fast_input)
 
 
-class Variable(SimpleExpression):
-    """ Free Variable.
-
-    Note
-    ----
-    Extension for the Saturated Transition-Based Generalization used in PDR.
-
-    Attributes
-    ----------
-    id : str
-        An identifier.
-    """
-
-    def __init__(self, id: str) -> None:
-        """ Initializer.
-        """
-        self.id: str = id
-
-    def __str__(self) -> str:
-        return self.id
-
-    def smtlib(self, k: int = None) -> str:
-        return self.id if k is None else "{}@{}".format(self.id, k)
-
-    def fast(self) -> str:
-        return self.id
