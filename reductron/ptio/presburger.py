@@ -434,7 +434,7 @@ class StateFormula(Expression):
         return smt_input
 
     def fast(self) -> str:
-        fast_input = ' {} '.format(self.operator).join(map(lambda operand: operand.fast(), self.operands))
+        fast_input = ' {} '.format(BOOLEAN_OPERATORS_TO_FST[self.operator]).join(map(lambda operand: operand.fast(), self.operands))
 
         if len(self.operands) > 1  or self.operator == 'not':
             fast_input = "({})".format(fast_input)
