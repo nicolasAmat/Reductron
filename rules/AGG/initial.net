@@ -1,0 +1,8 @@
+net AGG
+tr a : 1  -> y1
+tr b : 2  y2 ->
+tr tau1 : tau  y1 -> y2
+tr tau2 : tau  y2 -> y1
+tr c : 3  y2 ->
+tr d : 4  -> y2
+

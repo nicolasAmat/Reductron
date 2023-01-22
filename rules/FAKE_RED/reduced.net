@@ -1,0 +1,9 @@
+net FAKE_RED
+
+tr a : 1  -> y
+tr b : 2  y ->
+
+# generated equations
+# R |- z = y + k
+
+

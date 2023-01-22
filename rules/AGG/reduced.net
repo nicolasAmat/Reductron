@@ -1,4 +1,4 @@
-net FAKE_CONCAT
+net AGG
 
 tr a : 1  -> x
 tr b : 2  x ->
@@ -6,6 +6,6 @@ tr c : 3  x ->
 tr d : 4  -> x
 
 # generated equations
-# A |- x = p + q
+# A |- x = y1 + y2
 
 

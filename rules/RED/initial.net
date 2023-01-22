@@ -1,0 +1,6 @@
+net RED
+tr a : 1  -> y z
+tr b : 2  y z ->
+
+# Constraint: z = y + k
+

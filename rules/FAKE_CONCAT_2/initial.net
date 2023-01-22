@@ -1,9 +1,6 @@
-net FAKE_CONCAT
+net FAKE_CONCAT_2
 tr a : 1  -> p
 tr b : 2  p ->
 tr tau1 : tau  p -> q
 tr c : 3  q ->
-tr d : 4  -> q
-
-# Constraint: q = 0
 
