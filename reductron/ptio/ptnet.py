@@ -571,17 +571,17 @@ class Sequence:
 
         non_negative =  "(>= {} 0)".format(self.saturation_variable)
 
-        update_0 = ' '.join(["(= {} {})".format(pl.smtlib(k + 1), pl.smtlib(k)) for pl in self.delta.keys()])
+        update_0 = ' '.join(["(= {} {})".format(pl.smtlib(k + 1), pl.smtlib(k)) for pl in self.ptnet.places.values()])
 
-        hurdle_k = ' '.join(["(>= {} {})".format(pl.smtlib(k), str(hurdle) if self.delta.get(pl) >= 0 else "(+ {} (* (- {} 1) {}))").format(hurdle, self.saturation_variable, abs(self.delta.get(pl, 0))) for pl, hurdle in self.hurdle.items()])
-        update_k = ' '.join(["(= {} ({} {} (* {} {})))".format(pl.smtlib(k + 1), '-' if delta < 0 else '+', pl.smtlib(k), self.saturation_variable, abs(delta)) for pl, delta in self.delta.items()])
+        hurdle_k = ' '.join(["(>= {} {})".format(pl.smtlib(k), str(hurdle) if self.delta.get(pl) >= 0 else "(+ {} (* (- {} 1) {}))").format(hurdle, self.saturation_variable, abs(self.delta.get(pl, 0))) if hurdle else "" for pl, hurdle in self.hurdle.items()])
+        update_k = ' '.join(["(= {} ({} {} (* {} {})))".format(pl.smtlib(k + 1), '-' if self.delta[pl] < 0 else '+', pl.smtlib(k), self.saturation_variable, abs(self.delta[pl])) if self.delta.get(pl, 0) else "(= {} {})".format(pl.smtlib(k + 1), pl.smtlib(k)) for pl in self.ptnet.places.values()])
 
         eq = ""
         for pl in self.ptnet.places.values():
             if pl not in set.union(*[set(tr.connected_places) for tr in self.sequence]):
                 eq += "(= {} {})".format(pl.smtlib(k + 1), pl.smtlib(k))
         
-        smt_input = "(or (and (= {} 0) (and {} {})) (and (> {} 0) (and {} {})))".format(self.saturation_variable, update_0, eq, self.saturation_variable, hurdle_k, update_k, eq)
+        smt_input = "(or (and (= {} 0) {}) (and (> {} 0) (and {} {})))".format(self.saturation_variable, update_0, self.saturation_variable, hurdle_k, update_k)
 
         return "(exists ({}) (and {} {}))".format(self.smtlib_declare(), non_negative, smt_input)
 
