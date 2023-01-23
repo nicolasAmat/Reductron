@@ -1,0 +1,8 @@
+net PETRI-FLAG
+tr t0 : tau  p3 p4 p5 -> p0 p1 p2
+tr t1 : tau  p0 p5 -> p6 p7
+tr t2 : tau  p1 p2 p8 -> p3 p4 p5
+tr t3 : tau  p6 p7 -> p5 p8
+
+# Constraint: p0 = 1 /\ p1 = 1 /\ p2 = 1 /\ p3 = 0 /\ p4 = 0 /\ p5 = 0 /\ p6 = 0 /\ p7 = 0 /\ p8 = 1
+

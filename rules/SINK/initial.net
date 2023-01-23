@@ -1,0 +1,5 @@
+net SINK
+tr tau : tau  p -> 
+
+# Constraint: p = k
+
