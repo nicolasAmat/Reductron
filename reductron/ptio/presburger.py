@@ -143,7 +143,7 @@ class Presburger:
         return ' && '.join(map(lambda pl: "({} = K_{})".format(pl, pl), self.places)) + ' && ' + self.F.fast()
 
     def fast_variables(self) -> list[str]:
-        return ["K_{}".format(pl, pl) for pl in self.places]
+        return ["K_{}".format(pl, pl) for pl in set(self.places) | set(self.additional_vars)]
 
     def parse_coherency_constraint(self, filename: str) -> None:
         """ Parse coherency constraint.
@@ -564,7 +564,7 @@ class TokenCount(SimpleExpression):
         def variable_smtlib(var):
             return var if self.multipliers is None or var not in self.multipliers else "(* {} {})".format(var, self.multipliers[var])
 
-        smt_input = ' '.join([' '.join(map(lambda pl: place_smtlib(pl, k), self.places)), ' '.join(map(lambda var: variable_smtlib(var), self.additional_variables))])
+        smt_input = ' '.join([' '.join(map(lambda pl: place_smtlib(pl, k), self.places)), ' '.join(map(lambda var: variable_smtlib(var), self.additional_variables))]) # TODO: fix spaces
 
         if len(self.places) + len(self.additional_variables) > 1:
             smt_input = "(+ {})".format(smt_input)

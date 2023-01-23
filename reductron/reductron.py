@@ -57,7 +57,7 @@ def smt_coherent_t(n1: PetriNet, c1: Presburger, e: Polyhedron, k: int, k_prime:
         exists p1''. tau*(p1, p1'') /\ T(p'', p')
     """
     k_intermediate = k + k_prime + 1
-    return smt_exists(e.smtlib_declare(k1=k_intermediate, k2=k_intermediate, exclude_initial=on_reduced, exclude_reduced=not on_reduced), smt_and([smt_tau_star(e, k, k_intermediate, on_reduced=on_reduced), n1.smtlib_transition_relation(k_intermediate, k_prime, l=l)]))
+    return smt_exists(e.smtlib_declare(k1=k_intermediate, k2=k_intermediate, common=k_intermediate, exclude_initial=on_reduced, exclude_reduced=not on_reduced), smt_and([smt_tau_star(e, k, k_intermediate, on_reduced=on_reduced), n1.smtlib_transition_relation(k_intermediate, k_prime, l=l)]))
 
 
 def smt_hat_t(n1: PetriNet, c1: Presburger, e: Polyhedron, k: int, k_prime: int, l: Optional[str] = None, on_reduced: bool = False) -> str:
@@ -66,7 +66,7 @@ def smt_hat_t(n1: PetriNet, c1: Presburger, e: Polyhedron, k: int, k_prime: int,
         exists p1''. T'(p1, p1'') /\ tau*(p1'', p1')
     """
     k_intermediate = k + k_prime + 1
-    return smt_exists(e.smtlib_declare(k1=k_intermediate, k2=k_intermediate, exclude_initial=on_reduced, exclude_reduced=not on_reduced), smt_and([smt_coherent_t(n1, c1, e, k, k_intermediate, l, on_reduced=on_reduced), smt_tau_star(e, k_intermediate, k_prime, on_reduced=on_reduced)]))
+    return smt_exists(e.smtlib_declare(k1=k_intermediate, k2=k_intermediate, common=k_intermediate, exclude_initial=on_reduced, exclude_reduced=not on_reduced), smt_and([smt_coherent_t(n1, c1, e, k, k_intermediate, l, on_reduced=on_reduced), smt_tau_star(e, k_intermediate, k_prime, on_reduced=on_reduced)]))
 
 
 def smt_parametric(f: str, c1: Presburger, c2: Presburger) -> None:
@@ -94,7 +94,7 @@ def check_silent_reachability_set(solver: Z3, n1: PetriNet, c1: Presburger,  e: 
 
     f5 = smt_and([sequence.smtlib(k) for k, sequence in enumerate(tau_star)])
 
-    f4 = smt_exists([var for k in range(1, k_max) for var in e.smtlib_declare(k1=k, k2=k, exclude_initial=on_reduced, exclude_reduced=not on_reduced)], f5)
+    f4 = smt_exists([var for k in range(1, k_max) for var in e.smtlib_declare(k1=k, k2=k, common=k, exclude_initial=on_reduced, exclude_reduced=not on_reduced)], f5)
     
     f3 = smt_tau_star(e, 0, k_max, on_reduced=on_reduced)
 
@@ -102,7 +102,7 @@ def check_silent_reachability_set(solver: Z3, n1: PetriNet, c1: Presburger,  e: 
 
     f1 = smt_imply(c1.smtlib(0), f2)
 
-    f = smt_forall(e.smtlib_declare(k1=0, k2=0, exclude_initial=on_reduced, exclude_reduced=not on_reduced) + e.smtlib_declare(k1=k_max, k2=k_max, exclude_initial=on_reduced, exclude_reduced=not on_reduced), f1)
+    f = smt_forall(e.smtlib_declare(k1=0, k2=0, common=0, exclude_initial=on_reduced, exclude_reduced=not on_reduced) + e.smtlib_declare(k1=k_max, k2=k_max, common=k_max, exclude_initial=on_reduced, exclude_reduced=not on_reduced), f1)
 
     return solver.check_sat(smt_parametric(f, c1, c2))
 
@@ -121,13 +121,13 @@ def core_0(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet
 
     f4 = smt_and([smt_coherent_t(n1, c1, e, k, k_hiatus, l, on_reduced=on_reduced), c1.smtlib(k_hiatus), smt_tau_star(e, k_hiatus, k_prime, on_reduced=on_reduced)])
 
-    f3 = smt_exists(e.smtlib_declare(k1=k_hiatus, k2=k_hiatus, exclude_initial=on_reduced, exclude_reduced=not on_reduced), f4)
+    f3 = smt_exists(e.smtlib_declare(k1=k_hiatus, k2=k_hiatus, common=k_hiatus, exclude_initial=on_reduced, exclude_reduced=not on_reduced), f4)
 
     f2 = smt_and([c1.smtlib(k), smt_coherent_t(n1, c1, e, k, k_prime, l, on_reduced=on_reduced)])
 
     f1 = smt_imply(f2, f3)
 
-    f = smt_forall(e.smtlib_declare(k1=k, k2=k, exclude_initial=on_reduced, exclude_reduced=not on_reduced) + e.smtlib_declare(k1=k_prime, k2=k_prime, exclude_initial=on_reduced, exclude_reduced=not on_reduced) + [l], f1)
+    f = smt_forall(e.smtlib_declare(k1=k, k2=k, common=k, exclude_initial=on_reduced, exclude_reduced=not on_reduced) + e.smtlib_declare(k1=k_prime, k2=k_prime, common=k_prime, exclude_initial=on_reduced, exclude_reduced=not on_reduced) + [l], f1)
 
     return solver.check_sat(smt_parametric(f, c1, c2))
 
@@ -189,7 +189,7 @@ def core_3(solver: Z3, n1: PetriNet, c1: Presburger, e: Polyhedron, n2: PetriNet
 
         F  := forall p1 p2 p1' p2' l. (F1 => F2)
         F1 := C1(p1) /\ C2(p2) /\ E(p1, p2) /\ T^(C1)(p1, p1', l) /\ E(p1', p2')
-        F2 = T^(C2)(p2, p2', l)
+        F2 := T^(C2)(p2, p2', l)
     """
     l, k, k_prime = "l", 0, 1
     

@@ -74,7 +74,7 @@ class Polyhedron:
         self.additional_initial : set[str] = additional_initial
         self.additional_reduced : set[str] = additional_reduced
 
-        self.additional_vars: set[str] = []
+        self.additional_vars: set[str] = set()
 
         self.equations: list[Equation] = []
 
@@ -143,7 +143,7 @@ class Polyhedron:
 
         declaration = []
 
-        if not (exclude_initial and exclude_reduced):
+        if not exclude_initial or not exclude_reduced:
             for place in set(self.places_initial) & set(self.places_reduced):
                 declaration.append(place_smtlib(place, common))
 
@@ -313,7 +313,7 @@ class Equation:
 
             elif element.rfind('.') > element.rfind('}'):
                 index = element.rfind('.')
-                element, multiplier = element[:index], element[index+1:]
+                multiplier, element = element[:index], element[index+1:]
 
             variable = element.replace('{', '').replace('}', '')
             instantiated_variable = self.check_variable(variable, multiplier, polyhedron)

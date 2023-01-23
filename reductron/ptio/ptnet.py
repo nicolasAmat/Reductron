@@ -123,10 +123,13 @@ class PetriNet:
         str
             SMT-LIB format.
         """
-        smt_input = ""
+        if not self.places:
+            if l is None:
+                return "true"
+            else:
+               return "(= {} 0)".format(l)
 
-        if not self.transitions:
-            return "true"
+        smt_input = ""
 
         smt_input += ''.join(map(lambda tr: tr.smtlib(k, k_prime, l),self.labeled_transitions))
 
@@ -155,6 +158,9 @@ class PetriNet:
         str
             SMT-LIB format.
         """
+        if not self.places:
+            return "true"
+
         smt_input = ""
 
         smt_input += ''.join(map(lambda tr: tr.smtlib(k, k_prime), self.silent_transitions))
