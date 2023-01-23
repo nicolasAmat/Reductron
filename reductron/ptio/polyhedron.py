@@ -38,46 +38,45 @@ class Polyhedron:
 
     Attributes
     ----------
-    places_initial : list of str
-        A list of place identifiers from the initial Petri net.
-    places_reduced : list of str
-        A list of place identifiers from the reduced Petri net.
-    additional_initial : list of str
-            A list of additional variables from the initial Petri net.
-    additional_reduced : list of str
-        A list of additional variables from the reduced Petri net.
-    additional_vars : list of Variable
-        A list of additional variables (not places).
+    places_initial : set of str
+        A set of place identifiers from the initial Petri net.
+    places_reduced : set of str
+        A set of place identifiers from the reduced Petri net.
+    additional_initial : set of str
+        A set of additional variables from the initial Petri net.
+    additional_reduced : set of str
+        A set of additional variables from the reduced Petri net.
+    additional_vars : set of Variable
+        A set of additional variables (not places).
     equations : list of Equation
         A list of (in)equations.
     """
 
-    def __init__(self, filename: str, places_initial: list[str], places_reduced: list[str], additional_initial: list[str], additional_reduced: list[str]) -> None:
+    def __init__(self, filename: str, places_initial: set[str], places_reduced: set[str], additional_initial: set[str], additional_reduced: set[str]) -> None:
         """ Initializer.
 
         Parameters
         ----------
         filename : str
             Path to reduction system (.net format).
-        places_initial : list of str
-            A list of place identifiers from the initial Petri net.
-        places_reduced : list of str
-            A list of place identifiers from the reduced Petri net.
-        additional_initial : list of str
-            A list of additional variables from the initial Petri net.
-        additional_reduced : list of str
-            A list of additional variables from the reduced Petri net.
+        places_initial : set of str
+            A set of place identifiers from the initial Petri net.
+        places_reduced : set of str
+            A set of place identifiers from the reduced Petri net.
+        additional_initial : set of str
+            A set of additional variables from the initial Petri net.
+        additional_reduced : set of str
+            A set of additional variables from the reduced Petri net.
         """
-        self.places_initial: list[str] = places_initial
-        self.places_reduced: list[str] = places_reduced
+        self.places_initial: set[str] = set(places_initial)
+        self.places_reduced: set[str] = set(places_reduced)
 
-        self.additional_initial : list[str] = additional_initial
-        self.additional_reduced : list[str] = additional_reduced
+        self.additional_initial : set[str] = additional_initial
+        self.additional_reduced : set[str] = additional_reduced
 
-        self.additional_vars: list[str] = []
+        self.additional_vars: set[str] = []
 
         self.equations: list[Equation] = []
-        self.variables: list[Variable] = []
 
         self.parser(filename)
 
@@ -139,11 +138,22 @@ class Polyhedron:
         list of str
             SMT-LIB format.
         """
+        def place_smtlib(place, k):
+            return place if k is None else "{}@{}".format(place, k)
+
         declaration = []
 
-        for variable in self.variables:
-            if (variable.from_initial and (not exclude_initial or variable.from_reduced)) or (variable.from_reduced and (not exclude_reduced or variable.from_initial)):
-                declaration.append(variable.smtlib(k1, k2, common))
+        if not (exclude_initial and exclude_reduced):
+            for place in set(self.places_initial) & set(self.places_reduced):
+                declaration.append(place_smtlib(place, common))
+
+        if not exclude_initial:
+            for place in set(self.places_initial) - set(self.places_reduced):
+                declaration.append(place_smtlib(place, k1))
+
+        if not exclude_reduced:
+            for place in set(self.places_reduced) - set(self.places_initial):
+                declaration.append(place_smtlib(place, k2))
 
         return declaration
 
@@ -275,6 +285,9 @@ class Equation:
 
         for element in elements:
 
+            if not element:
+                continue
+
             if element in ['=', '<=', '>=', '<', '>']:
                 self.operator = element
                 current, inversed = inversed, current
@@ -336,11 +349,10 @@ class Equation:
                 from_coherency_constraint = True
             if not (from_initial or from_reduced or from_coherency_constraint):
                 from_additional = True
-                polyhedron.additional_vars.append(variable)
+                polyhedron.additional_vars.add(variable)
 
         instantiated_variable = Variable(variable, multiplier, from_initial, from_reduced, from_coherency_constraint, from_additional)
-        polyhedron.variables.append(instantiated_variable)
-        
+
         return instantiated_variable
 
 

@@ -78,33 +78,25 @@ def smt_parametric(f: str, c1: Presburger, c2: Presburger) -> None:
 def check_silent_reachability_set(solver: Z3, n1: PetriNet, c1: Presburger,  e: Polyhedron, n2: PetriNet, c2: Presburger, tau_star: list[Sequence], on_reduced: bool = False) -> bool:
     """ Check the silent reachability set of N1 (resp N2) from Fast is equivalent to E /\ C2 (resp E /\ C1).
 
-        forall p1. p1^k. C1(p1) => ((exists p2. E(p1, p2) /\ E(p1^k, p2) /\ C2(p2)) <=> (exists p1^0 ... p^k-1. tau_star[0](p1^0, p1^1) /\ ... /\ tau_star[k-1](p1^k-1, p1^k))
+        forall p1. p1^k. C1(p1) => (tau*(p1, p1^k) <=> (exists p1^0 ... p^k-1. tau_star[0](p1^0, p1^1) /\ ... /\ tau_star[k-1](p1^k-1, p1^k))
 
         F  := forall p1. p1^k. F1
         F1 := C1(p1) => F2
-        F2 :=  F3 <=> F4
-        F3 := exists p2. F5
-        F4 := exists p1^0 ... p^k-1. F6
-        F5 := E(p1^k, p2) /\ C2(p2)
-        F6 := tau_star[0](p1^0, p1^1) /\ ... /\ tau_star[k-1](p1^k-1, p1^k)
+        F2 := F3 <=> F4
+        F3 := tau*(p1, p1^k)
+        F4 := exists p1^0 ... p^k-1. F5
+        F5 := tau_star[0](p1^0, p1^1) /\ ... /\ tau_star[k-1](p1^k-1, p1^k)
     """
     k_max = len(tau_star)
 
     if k_max == 0:
         return True
 
-    if not on_reduced:
-        k1, k2, common = k_max, None, k_max
-    else:
-        k1, k2, common = None, k_max, k_max
+    f5 = smt_and([sequence.smtlib(k) for k, sequence in enumerate(tau_star)])
 
-    f6 = smt_and([sequence.smtlib(k) for k, sequence in enumerate(tau_star)])
+    f4 = smt_exists([var for k in range(1, k_max) for var in e.smtlib_declare(k1=k, k2=k, exclude_initial=on_reduced, exclude_reduced=not on_reduced)], f5)
     
-    f5 = smt_and([e.smtlib(k1=0, k2=k2, common=common), e.smtlib(k1=k1, k2=k2, common=common), c2.smtlib()])
-
-    f4 = smt_exists([var for k in range(1, k_max) for var in e.smtlib_declare(k1=k, k2=k, exclude_initial=on_reduced, exclude_reduced=not on_reduced)], f6)
-    
-    f3 = smt_exists(e.smtlib_declare(k1=k1, k2=k2, common=common, exclude_initial=not on_reduced, exclude_reduced=on_reduced), f5)
+    f3 = smt_tau_star(e, 0, k_max, on_reduced=on_reduced)
 
     f2 = smt_equiv(f3, f4)
 
