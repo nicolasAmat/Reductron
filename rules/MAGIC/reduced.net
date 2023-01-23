@@ -1,0 +1,10 @@
+net MAGIC
+
+tr a : 1  -> x
+tr b : 2  x ->
+tr c : 3  x ->
+
+# generated equations
+# A |- x = y1 + y2 + y3 + y4
+
+
