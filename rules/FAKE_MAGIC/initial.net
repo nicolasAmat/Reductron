@@ -1,0 +1,11 @@
+net FAKE_MAGIC
+tr a : 1  -> y1
+tr b : 2  y2 ->
+tr tau1 : tau  y1 -> y2
+tr tau2 : tau  y1 -> y3
+tr tau3 : tau  y1 y2 -> y3 y4
+tr tau4 : tau  y2 -> y4
+tr tau5 : tau  y3 -> y4
+tr c : 3  y4 ->
+
+# Constraint: y2 = 0 /\ y3 = 0 /\ y4 = 0

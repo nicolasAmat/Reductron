@@ -1,0 +1,16 @@
+net BUFFER
+tr tau1 : tau   p1 -> p2
+tr tau2 : tau   p2 -> p3
+tr tau3 : tau   p3 -> p0
+tr t4 : 1  -> p1
+tr t5 : 2  p1 ->
+tr t6 : 3  -> p2
+tr t7 : 4   p2 ->
+tr t8 : 5   -> p3
+tr t9 : 6   p3 ->
+tr t10 : 7   -> p0
+tr t11 : 8   p0 ->
+tr tau4 : tau   p0 -> p3
+tr tau5 : tau   p2 -> p1
+tr tau6 : tau   p3 -> p2
+

@@ -1,0 +1,15 @@
+net BUFFER
+tr t4 : 1   -> p5
+tr t5 : 2   p5 ->
+tr t6 : 3   -> p5
+tr t7 : 4   p5 ->
+tr t8 : 5   -> p5
+tr t9 : 6   p5 ->
+tr t10 : 7   -> p5
+tr t11 : 8   p5 ->
+
+# generated equations
+# R |- p0 + p1 + p2 + p3 = p5
+
+
+
