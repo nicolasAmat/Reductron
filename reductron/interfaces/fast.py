@@ -106,7 +106,9 @@ def tau_star(ptnet: PetriNet, region: Presburger, debug: bool = False) -> list[l
             print(line)
         
         if 'OK !' in line:
-            sequences.append(Sequence(ptnet, "tau{}".format(counter), [ptnet.transitions[line.split(' ')[2]]]))
+            fast_sequences = line.split(' ')[2].replace('(', '').replace(')', '').split('+')
+            for fast_sub_sequence in fast_sequences:
+                sequences.append(Sequence(ptnet, "tau{}".format(counter), [ptnet.transitions[tr] for tr in fast_sub_sequence.split('.')]))
             counter += 1
     
     return sequences
