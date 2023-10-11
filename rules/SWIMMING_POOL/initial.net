@@ -1,0 +1,11 @@
+net {SwimmingPool-PT-01}
+tr Enter : tau Out -> Entered 
+tr GetB : tau Bags WaitBag -> Undress 
+tr GetK : tau Cabins Entered -> WaitBag 
+tr GetK2 : tau Cabins InBath -> Dress 
+tr RBag : tau Dress -> Bags Dressed 
+tr RKey : tau Dressed -> Cabins Out 
+tr RelK : tau Undress -> Cabins InBath 
+
+
+# Constraint: Bags = 15 /\ Cabins = 10 /\ Out = 20 /\ Entered + WaitBag + Undress + Dress + InBath + Dressed = 0

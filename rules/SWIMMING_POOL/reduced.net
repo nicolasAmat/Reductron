@@ -1,0 +1,7 @@
+# generated equations
+# A |- a1 = Entered + Out
+# I |- Dress + Dressed + InBath + a1 + Undress + WaitBag = 20
+# I |- Bags + Dress + InBath + Undress = 15
+# I |- Cabins + Dress + Dressed + Undress + WaitBag = 10
+
+net {SwimmingPool-PT-01}
