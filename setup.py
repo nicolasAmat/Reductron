@@ -17,14 +17,11 @@ You should have received a copy of the GNU General Public License
 along with Reductron. If not, see <https://www.gnu.org/licenses/>.
 """
 
-from cx_Freeze import setup, Executable
+import setuptools
 
-
-setup(
-    name="Reductron",
-    version="1.0",
-    description="Reductron - The Polyhedral Abstraction Prover",
-    author="Nicolas Amat, LAAS-CNRS",
-    author_email="namat@laas.fr",
-    executables=[Executable("reductron/__main__.py", targetName="reductron.exe")]
+setuptools.setup(
+     name='reductron',  
+     version='1.0',
+     scripts=['reductron/reductron.py'] ,
+     packages=setuptools.find_packages(),
 )
