@@ -18,6 +18,8 @@ on the tool FAST and the SMT solver z3.
 
 + [TaPAS](https://tapas.labri.fr/wp/?page_id=98) - The Talence Presburger Arithmetic Suite
 + [FASTer](https://tapas.labri.fr/wp/?page_id=98) - A tool for the analysis of large or even infinite systems
++ `sift` from the [TINA Toolbox](http://projects.laas.fr/tina/)
++ [z3](https://github.com/Z3Prover/z3) - SMT solver
 
 ## Installation
 
