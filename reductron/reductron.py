@@ -26,7 +26,7 @@ __version__ = "1.0"
 
 import argparse
 import logging as log
-import time
+from time import time
 from typing import Optional
 
 from reductron.ptio.ptnet import PetriNet, Sequence
@@ -207,7 +207,7 @@ def main():
     """ Main function.
     """
     # Start time
-    start_time = time.time()
+    start_time = time()
 
     # Arguments parser
     parser = argparse.ArgumentParser(description='Reductron - Automated Polyhedral Abstraction Prover')
@@ -279,6 +279,9 @@ def main():
     log.info("--")
     log.info(e)
 
+    if results.show_time:
+        current_time = time()
+
     # Compute tau*
     tau1_star = tau_star(n1, c1, results.debug)
     log.info("tau1*:")
@@ -291,6 +294,11 @@ def main():
     log.info("------")
     log.info(''.join(map(str, tau2_star)))
     log.info("")
+
+    if results.show_time:
+        print("# FAST time:", time() - current_time)
+        print()
+        current_time = time()
 
     # Instantiate a SMT-solver
     solver = Z3(results.debug)
@@ -305,7 +313,7 @@ def main():
 
     print()
 
-    print("> Check that (N2, C2) is a strong E-abstraction of (N1, C1):")
+    print("> Check that (N2, C2) is a parametric E-abstraction of (N1, C1):")
     print("(CORE 0):", core_0(solver, n1, c1, e, n2, c2))
     print("(CORE 1):", core_1(solver, n1, c1, e, n2, c2))
     print("(CORE 2):", core_2(solver, n1, c1, e, n2, c2))
@@ -313,12 +321,17 @@ def main():
 
     print()
 
-    print("> Check that (N1, C1) is a strong E-abstraction of (N2, C2):")
+    print("> Check that (N1, C1) is a parametric E-abstraction of (N2, C2):")
     print("(CORE 0):", core_0(solver, n2, c2, e, n1, c1, on_reduced=True))
     print("(CORE 1):", core_1(solver, n2, c2, e, n1, c1, on_reduced=True))
     print("(CORE 2):", core_2(solver, n2, c2, e, n1, c1, on_reduced=True))
     print("(CORE 3):", core_3(solver, n2, c2, e, n1, c1, on_reduced=True))
 
+    if results.show_time:
+        print()
+        print("# SMT solving time:", time() - current_time)
+        print()
+        print("# Total time:", time() - start_time)
 
 if __name__ == '__main__':
     main()
